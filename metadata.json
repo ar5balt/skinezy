@@ -1,0 +1,8 @@
+{
+  "name": "Skinezy Studio",
+  "description": "Pixel-accurate Minecraft skin texture editor and 3D previewer",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

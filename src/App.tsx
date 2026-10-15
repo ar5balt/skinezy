@@ -33,9 +33,37 @@ export default function App() {
           <button className="tool" data-tool="select" title="Rectangle selection" type="button"><span>▱</span><small>Select</small></button>
           <button className="tool" data-tool="lighten" title="Lighten" type="button"><span>☼</span><small>Lighten</small></button>
           <button className="tool" data-tool="darken" title="Darken" type="button"><span>◐</span><small>Darken</small></button>
+          <button id="toolFilters" className="tool" title="Filters (Fx)" type="button"><span>✦</span><small>Filters</small></button>
         </div>
         <div className="rail-spacer" />
         <button id="gridToggle" className="tool utility active" title="Pixel grid" type="button"><span>▦</span><small>Grid</small></button>
+      </aside>
+
+      <aside id="filtersDrawer" className="filters-drawer closed" aria-label="Filters panel">
+        <div className="drawer-header">
+          <div className="drawer-title"><span className="drawer-icon">✦</span><h2>Filters</h2></div>
+          <button id="closeFiltersDrawer" className="icon-button" type="button" aria-label="Close filters">✕</button>
+        </div>
+        <p className="drawer-hint">Preview changes directly on the active texture before applying.</p>
+        <div className="filter-grid">
+          <button className="filter-chip" data-filter="grayscale" type="button">Grayscale</button>
+          <button className="filter-chip" data-filter="sepia" type="button">Sepia</button>
+          <button className="filter-chip" data-filter="invert" type="button">Invert</button>
+          <button className="filter-chip" data-filter="brightness" type="button">Brightness</button>
+          <button className="filter-chip" data-filter="contrast" type="button">Contrast</button>
+          <button className="filter-chip" data-filter="saturation" type="button">Saturation</button>
+          <button className="filter-chip" data-filter="hue" type="button">Hue shift</button>
+          <button className="filter-chip" data-filter="warm" type="button">Warm</button>
+          <button className="filter-chip" data-filter="colorize" type="button">Colorize</button>
+          <button className="filter-chip" data-filter="posterize" type="button">Posterize</button>
+        </div>
+        <label className="setting-label filter-amount-label"><span id="filterAmountName">Effect strength</span><span id="filterAmountValue">100%</span></label>
+        <input id="filterAmount" type="range" min={0} max={100} defaultValue={100} />
+        <div className="filter-actions">
+          <button id="previewFilter" className="secondary-button" type="button">Preview</button>
+          <button id="applyFilter" className="primary-button" disabled type="button">Apply</button>
+        </div>
+        <div id="filterPreview" className="preview-note hidden">Preview active <button id="cancelPreview" type="button">Cancel</button></div>
       </aside>
 
       <section className="canvas-area">
@@ -45,6 +73,58 @@ export default function App() {
         </div>
         <div id="canvasStage" className="canvas-stage">
           <div className="canvas-frame"><canvas id="skinCanvas" width={64} height={64} aria-label="64 by 64 pixel skin texture" /><div id="selectionOutline" className="selection-outline hidden" /></div>
+          <div id="bodyMannequin" className="canvas-mannequin-hud" aria-label="Body parts and layer visibility">
+            <div className="mannequin-hud-header">
+              <span className="mannequin-hud-title">Parts & Layers</span>
+              <div className="mannequin-actions">
+                <button id="mannequinAll" className="mini-hud-btn" title="Show all parts" type="button">All</button>
+                <button id="mannequinNone" className="mini-hud-btn" title="Hide all parts" type="button">None</button>
+              </div>
+            </div>
+            <div className="segmented mannequin-layer-segmented">
+              <button className="mannequin-layer-btn active" data-layer="both" type="button" title="Both base and outer layers">Both</button>
+              <button className="mannequin-layer-btn" data-layer="base" type="button" title="Base layer only">Base</button>
+              <button className="mannequin-layer-btn" data-layer="outer" type="button" title="Outer layer only">Outer</button>
+            </div>
+            <div className="mannequin-wrapper">
+              <svg id="mannequinSvg" className="mannequin-svg" viewBox="0 0 120 168" xmlns="http://www.w3.org/2000/svg">
+                <g className="mannequin-part" data-part="head" role="button" tabIndex={0} aria-label="Head">
+                  <rect x="40" y="6" width="40" height="40" rx="3" />
+                  <rect className="inner-detail" x="48" y="22" width="6" height="5" rx="1" />
+                  <rect className="inner-detail" x="66" y="22" width="6" height="5" rx="1" />
+                  <line className="inner-detail" x1="40" y1="16" x2="80" y2="16" />
+                  <title>Head (click to toggle)</title>
+                </g>
+                <g className="mannequin-part" data-part="rightArm" role="button" tabIndex={0} aria-label="Right arm">
+                  <rect x="16" y="50" width="20" height="56" rx="3" />
+                  <line className="inner-detail" x1="16" y1="88" x2="36" y2="88" />
+                  <title>Right arm (click to toggle)</title>
+                </g>
+                <g className="mannequin-part" data-part="torso" role="button" tabIndex={0} aria-label="Torso">
+                  <rect x="40" y="50" width="40" height="56" rx="3" />
+                  <line className="inner-detail" x1="40" y1="78" x2="80" y2="78" />
+                  <line className="inner-detail" x1="60" y1="50" x2="60" y2="106" />
+                  <title>Torso (click to toggle)</title>
+                </g>
+                <g className="mannequin-part" data-part="leftArm" role="button" tabIndex={0} aria-label="Left arm">
+                  <rect x="84" y="50" width="20" height="56" rx="3" />
+                  <line className="inner-detail" x1="84" y1="88" x2="104" y2="88" />
+                  <title>Left arm (click to toggle)</title>
+                </g>
+                <g className="mannequin-part" data-part="rightLeg" role="button" tabIndex={0} aria-label="Right leg">
+                  <rect x="40" y="110" width="19" height="52" rx="3" />
+                  <line className="inner-detail" x1="40" y1="146" x2="59" y2="146" />
+                  <title>Right leg (click to toggle)</title>
+                </g>
+                <g className="mannequin-part" data-part="leftLeg" role="button" tabIndex={0} aria-label="Left leg">
+                  <rect x="61" y="110" width="19" height="52" rx="3" />
+                  <line className="inner-detail" x1="61" y1="146" x2="80" y2="146" />
+                  <title>Left leg (click to toggle)</title>
+                </g>
+              </svg>
+              <div id="mannequinStatus" className="mannequin-status">6/6 parts · Both layers</div>
+            </div>
+          </div>
         </div>
         <footer className="statusbar"><span id="pixelInfo">X: — &nbsp; Y: — &nbsp; RGBA: —</span><span id="canvasSize">64 × 64 px</span><span id="saveStatus">Saved</span></footer>
       </section>
@@ -63,13 +143,29 @@ export default function App() {
           <label className="setting-label"><span>Fill tolerance</span><span id="toleranceValue">0</span></label><input id="tolerance" type="range" min={0} max={255} defaultValue={0} />
           <label className="setting-label"><span>Intensity</span><span id="intensityValue">10%</span></label><input id="intensity" type="range" min={5} max={30} step={5} defaultValue={10} />
         </section>
-        <section className="panel-section filters-section"><div className="section-heading"><h2>Filters</h2><span className="panel-count">10</span></div><p className="section-hint">Preview is temporary until you apply.</p><div className="filter-grid">
-          <button className="filter-chip" data-filter="grayscale" type="button">Grayscale</button><button className="filter-chip" data-filter="sepia" type="button">Sepia</button><button className="filter-chip" data-filter="invert" type="button">Invert</button><button className="filter-chip" data-filter="brightness" type="button">Brightness</button><button className="filter-chip" data-filter="contrast" type="button">Contrast</button><button className="filter-chip" data-filter="saturation" type="button">Saturation</button><button className="filter-chip" data-filter="hue" type="button">Hue shift</button><button className="filter-chip" data-filter="warm" type="button">Warm</button><button className="filter-chip" data-filter="colorize" type="button">Colorize</button><button className="filter-chip" data-filter="posterize" type="button">Posterize</button>
-        </div><label className="setting-label filter-amount-label"><span id="filterAmountName">Effect strength</span><span id="filterAmountValue">100%</span></label><input id="filterAmount" type="range" min={0} max={100} defaultValue={100} /><div className="filter-actions"><button id="previewFilter" className="secondary-button" type="button">Preview</button><button id="applyFilter" className="primary-button" disabled type="button">Apply</button></div><div id="filterPreview" className="preview-note hidden">Preview active <button id="cancelPreview" type="button">Cancel</button></div></section>
-        <section className="panel-section selection-section"><div className="section-heading"><h2>Selection</h2><button id="deselect" className="quiet-button" type="button">Clear</button></div><div className="selection-meta" id="selectionInfo">No selection</div><div className="selection-actions"><button id="copySelection" className="secondary-button" type="button">Copy</button><button id="cutSelection" className="secondary-button" type="button">Cut</button><button id="deleteSelection" className="secondary-button" type="button">Delete</button></div><div className="selection-actions transform-actions"><button id="flipSelectionH" className="secondary-button" type="button" title="Flip horizontally">Flip H</button><button id="flipSelectionV" className="secondary-button" type="button" title="Flip vertically">Flip V</button><button id="rotateSelection" className="secondary-button" type="button" title="Rotate clockwise">Rotate ↻</button></div></section>
-        <section className="panel-section model-section"><div className="section-heading"><h2>Skin model</h2></div><div className="segmented"><button className="model-button active" data-model="classic" type="button">Classic</button><button className="model-button" data-model="slim" type="button">Slim</button></div><p className="section-hint">3D geometry is available. UV orientation still needs control-skin verification.</p></section>
       </aside>
     </main>
+    <div id="modelModal" className="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modelModalTitle">
+      <div className="model-modal-dialog">
+        <div className="modal-header">
+          <h3 id="modelModalTitle">Choose Skin Model</h3>
+          <button id="closeModelModal" className="icon-button" type="button" aria-label="Close">✕</button>
+        </div>
+        <p className="modal-subtitle">Choose the player geometry for this skin:</p>
+        <div className="model-options">
+          <button id="selectClassicModel" className="model-card" type="button">
+            <div className="model-icon">🧔</div>
+            <div className="model-name">Classic (Steve)</div>
+            <div className="model-desc">Standard 4-pixel wide arms</div>
+          </button>
+          <button id="selectSlimModel" className="model-card" type="button">
+            <div className="model-icon">🧑</div>
+            <div className="model-name">Slim (Alex)</div>
+            <div className="model-desc">Slim 3-pixel wide arms</div>
+          </button>
+        </div>
+      </div>
+    </div>
     <section id="comparePanel" className="compare-panel hidden"><div className="compare-heading"><div><h2>Skin comparison</h2><p>Compare aligned 64 × 64 texture pixels</p></div><button id="closeCompare" className="icon-button" type="button">×</button></div><div className="compare-controls"><label>Base <select id="compareBase" /></label><label>Other <select id="compareOther" /></label><label>Mode <select id="compareMode"><option value="side">Side by side</option><option value="diff">Difference</option><option value="overlay">Overlay</option></select></label><label id="overlayOpacityWrap" className="hidden">Opacity <input id="overlayOpacity" type="range" min={0} max={100} defaultValue={50} /></label></div><div id="compareGrid" className="compare-grid" /></section>
   </div>;
 }

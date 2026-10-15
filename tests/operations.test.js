@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { blankTexture, decodePng, encodePng } from '../src/texture.js';
-import { drawLine, floodFill, filterPixels, transformSelection } from '../src/operations.js';
+import { drawLine, floodFill, filterPixels, transformSelection, extractFragment, clearRegion, blitFragment } from '../src/operations.js';
 import { SKIN_UV_REGIONS, uvBoundsValid, limbWidth, skinRegions } from '../src/minecraft/uvMaps.js';
 import { rgbaTopToBottom } from '../src/preview3d/pixelRows.js';
 import { boxWithAtlasUV } from '../src/preview3d/skinPreview.js';
@@ -116,3 +116,42 @@ test('3D atlas upload reverses row order while preserving each RGBA pixel',()=>{
   assert.deepEqual([...upload.slice((63*64)*4,(63*64)*4+4)],[1,2,3,4]);
   assert.deepEqual([...upload.slice(0,4)],[9,8,7,6]);
 });
+
+test('extractFragment cuts and blitFragment moves fragment to new coordinates without distorting',()=>{
+  const pixels=blankTexture();
+  // Draw a 3x3 block at (10, 10)
+  for(let y=10;y<13;y++)for(let x=10;x<13;x++){
+    pixels.set([100,150,200,255],(y*64+x)*4);
+  }
+  const selection={x:10,y:10,w:3,h:3};
+  const fragment=extractFragment(pixels,selection);
+  assert.equal(fragment.length, 3*3*4);
+  assert.deepEqual([...fragment.slice(0,4)],[100,150,200,255]);
+
+  clearRegion(pixels,selection);
+  // Source area is now transparent
+  assert.deepEqual([...pixels.slice((10*64+10)*4,(10*64+10)*4+4)],[0,0,0,0]);
+
+  // Blit fragment to (20, 30)
+  blitFragment(pixels,fragment,3,3,20,30);
+  assert.deepEqual([...pixels.slice((30*64+20)*4,(30*64+20)*4+4)],[100,150,200,255]);
+  assert.deepEqual([...pixels.slice((32*64+22)*4,(32*64+22)*4+4)],[100,150,200,255]);
+});
+
+test('blitFragment with blend=true does not overwrite background pixels with transparent fragment pixels',()=>{
+  const target=blankTexture();
+  // Fill target with green
+  for(let y=0;y<5;y++)for(let x=0;x<5;x++)target.set([0,255,0,255],(y*64+x)*4);
+  // Fragment has 1 red pixel and 3 transparent pixels
+  const fragment=new Uint8Array(2*2*4);
+  fragment.set([255,0,0,255],0); // (0,0) is red, rest (0,1),(1,0),(1,1) are 0 alpha
+  blitFragment(target,fragment,2,2,0,0,true);
+  // (0,0) should be red
+  assert.deepEqual([...target.slice(0,4)],[255,0,0,255]);
+  // (1,0) should still be original green, not overwritten by transparent 0
+  assert.deepEqual([...target.slice(4,8)],[0,255,0,255]);
+  // (0,1) should still be green
+  assert.deepEqual([...target.slice(64*4,64*4+4)],[0,255,0,255]);
+});
+
+

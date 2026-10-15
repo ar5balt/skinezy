@@ -68,3 +68,41 @@ export function filterPixels(source, type, amount=100, selection=null, colorize=
 
 export function rgbToHsv(r,g,b){r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0; if(d){if(max===r)h=((g-b)/d)%6;else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h/=6;if(h<0)h++;}return[h,max===0?0:d/max,max];}
 export function hsvToRgb(h,s,v){h=((h%1)+1)%1*6;const i=Math.floor(h),f=h-i,p=v*(1-s),q=v*(1-f*s),t=v*(1-(1-f)*s);const a=[[v,t,p],[q,v,p],[p,v,t],[p,q,v],[t,p,v],[v,p,q]][i];return a.map(x=>Math.round(x*255));}
+
+export function extractFragment(pixels, selection) {
+  const { x, y, w, h } = selection;
+  const fragment = new Uint8Array(w * h * 4);
+  for (let sy = 0; sy < h; sy++) {
+    for (let sx = 0; sx < w; sx++) {
+      const srcIdx = pixelOffset(x + sx, y + sy);
+      fragment.set(pixels.subarray(srcIdx, srcIdx + 4), (sy * w + sx) * 4);
+    }
+  }
+  return fragment;
+}
+
+export function clearRegion(pixels, selection) {
+  const { x, y, w, h } = selection;
+  for (let sy = 0; sy < h; sy++) {
+    for (let sx = 0; sx < w; sx++) {
+      pixels.set([0, 0, 0, 0], pixelOffset(x + sx, y + sy));
+    }
+  }
+}
+
+export function blitFragment(target, fragment, w, h, destX, destY, blend = false) {
+  for (let sy = 0; sy < h; sy++) {
+    const targetY = destY + sy;
+    if (targetY < 0 || targetY >= 64) continue;
+    for (let sx = 0; sx < w; sx++) {
+      const targetX = destX + sx;
+      if (targetX < 0 || targetX >= 64) continue;
+      const srcIdx = (sy * w + sx) * 4;
+      const dstIdx = pixelOffset(targetX, targetY);
+      const srcA = fragment[srcIdx + 3];
+      if (srcA === 0 && blend) continue;
+      target.set(fragment.subarray(srcIdx, srcIdx + 4), dstIdx);
+    }
+  }
+}
+

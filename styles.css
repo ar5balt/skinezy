@@ -6,4 +6,57 @@
 .compare-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;color:#9097a2;font-size:10px}.compare-controls label{display:flex;align-items:center;gap:6px}.compare-controls select{height:25px;max-width:180px;border:1px solid #383e47;border-radius:4px;background:#20242a;color:#d0d4dc;font:inherit;padding:0 6px}.compare-controls input{width:90px;accent-color:var(--blue)}
 .preview3d-controls .preview3d-separator{margin:0 0 0 3px;color:#77808c}
 @media(max-width:850px){body{min-width:0}.topbar{overflow-x:auto;gap:12px;padding:0 12px}.top-actions{flex:none}.workspace{grid-template-columns:58px minmax(250px,1fr)}.inspector{display:none}.tool-rail{padding-top:10px}.tool{width:48px;height:48px}.tool small{font-size:9px}.canvas-toolbar{padding:0 9px}.view-tabs{gap:10px}.canvas-stage{overflow:auto}.compare-panel{left:58px;right:0}.project-tabs{padding:0 8px}}
-.canvas-frame.view-hidden{display:none}.three-host{position:absolute;inset:0;width:100%;height:100%;min-height:360px}.canvas-stage{position:relative}.three-host canvas{display:block;width:100%;height:100%}.preview3d-controls{position:absolute;top:12px;left:12px;right:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;z-index:1;padding:8px 10px;border:1px solid #353b45;border-radius:7px;background:#15191fcf;color:#aeb5c0;font-size:10px}.preview3d-controls label{display:flex;align-items:center;gap:5px}.preview3d-controls input{accent-color:var(--blue)}.preview3d-controls select,.preview3d-views button{height:24px;border:1px solid #3b424d;border-radius:4px;background:#20242a;color:#c6cbd3;font:10px inherit;padding:0 7px}.preview3d-controls select{font:inherit}.preview3d-views{display:flex;gap:4px}.preview3d-views button{cursor:pointer}.preview3d-controls>span{margin-left:auto;color:#777f8a}
+.canvas-frame.view-hidden{display:none}.three-host{position:absolute;inset:0;width:100%;height:100%;min-height:360px}.three-host:empty{display:none!important;pointer-events:none!important}.canvas-stage{position:relative}.three-host canvas{display:block;width:100%;height:100%}.preview3d-controls{position:absolute;top:12px;left:12px;right:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;z-index:1;padding:8px 10px;border:1px solid #353b45;border-radius:7px;background:#15191fcf;color:#aeb5c0;font-size:10px}.preview3d-mode-toggle{display:flex;gap:4px}.preview3d-mode-toggle button{height:24px;border:1px solid #3b424d;border-radius:4px;background:#20242a;color:#c6cbd3;font:10px inherit;padding:0 8px;cursor:pointer}.preview3d-mode-toggle button.active{background:#2a3040;border-color:var(--blue);color:#d5dbff;font-weight:600}.preview3d-controls label{display:flex;align-items:center;gap:5px}.preview3d-controls input{accent-color:var(--blue)}.preview3d-controls select,.preview3d-views button{height:24px;border:1px solid #3b424d;border-radius:4px;background:#20242a;color:#c6cbd3;font:10px inherit;padding:0 7px}.preview3d-controls select{font:inherit}.preview3d-views{display:flex;gap:4px}.preview3d-views button{cursor:pointer}.preview3d-controls>span{margin-left:auto;color:#777f8a}
+
+.workspace{position:relative}
+
+/* Left Rail Filters Drawer */
+.filters-drawer{position:absolute;top:0;bottom:0;left:74px;width:280px;background:#14171b;border-right:1px solid var(--line);padding:16px 18px;display:flex;flex-direction:column;gap:12px;z-index:25;box-shadow:12px 0 32px rgba(0,0,0,.5);transform:translateX(0);opacity:1;transition:transform .22s cubic-bezier(0.16,1,0.3,1),opacity .2s ease;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#333842 transparent}
+.filters-drawer.closed{transform:translateX(-100%);opacity:0;pointer-events:none}
+.drawer-header{display:flex;align-items:center;justify-content:space-between}
+.drawer-title{display:flex;align-items:center;gap:8px}
+.drawer-title h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#c7cbd2;margin:0;font-weight:600}
+.drawer-icon{color:var(--blue);font-size:15px}
+.drawer-hint{margin:0 0 4px;font-size:11px;color:#7e8692;line-height:1.4}
+
+/* Floating Mannequin HUD in Canvas Stage */
+.canvas-mannequin-hud{position:absolute;top:14px;right:14px;z-index:15;width:152px;padding:10px 10px 8px;background:rgba(18,22,28,0.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.1);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.35);opacity:0.72;transition:opacity .2s ease,border-color .2s ease,box-shadow .2s ease;user-select:none}
+.canvas-mannequin-hud:hover,.canvas-mannequin-hud:focus-within{opacity:1;border-color:rgba(103,129,255,0.35);box-shadow:0 12px 32px rgba(0,0,0,0.5)}
+.mannequin-hud-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.mannequin-hud-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af}
+.mannequin-actions{display:flex;gap:4px}
+.mini-hud-btn{font-size:10px;padding:1px 6px;height:20px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.06);color:#8c93a0;cursor:pointer;transition:.12s ease}
+.mini-hud-btn:hover{background:rgba(255,255,255,0.14);color:#fff;border-color:rgba(255,255,255,0.22)}
+.mannequin-layer-segmented{margin-bottom:8px}
+.mannequin-layer-btn{flex:1;height:24px;border:0;border-radius:4px;background:transparent;color:#818994;font:10px inherit;cursor:pointer;transition:all .12s ease}
+.mannequin-layer-btn:hover{color:#cdd3dc}
+.mannequin-layer-btn.active{background:#242c48;color:#9cb1ff;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.mannequin-wrapper{display:flex;flex-direction:column;align-items:center;padding:8px 4px 6px;background:rgba(10,12,16,0.5);border:1px solid rgba(255,255,255,0.06);border-radius:6px}
+.mannequin-svg{width:96px;height:136px;overflow:visible;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.4))}
+.mannequin-part{cursor:pointer;outline:none;transition:transform .12s ease,opacity .15s ease}
+.mannequin-part rect{fill:rgba(103,129,255,0.24);stroke:#5d7cff;stroke-width:1.5;transition:fill .15s ease,stroke .15s ease}
+.mannequin-part .inner-detail{stroke:rgba(103,129,255,0.5);stroke-width:1;fill:rgba(103,129,255,0.32)}
+.mannequin-part:hover rect{fill:rgba(103,129,255,0.42);stroke:#8ca2ff}
+.mannequin-part:hover .inner-detail{stroke:rgba(140,162,255,.8);fill:rgba(140,162,255,.5)}
+.mannequin-part:focus-visible rect{stroke:#fff;stroke-width:2}
+.mannequin-part.dimmed{opacity:0.3}
+.mannequin-part.dimmed rect{fill:rgba(30,34,42,0.35);stroke:#454c59}
+.mannequin-part.dimmed .inner-detail{stroke:rgba(69,76,89,0.4);fill:transparent}
+.mannequin-status{font:9px 'DM Mono',monospace;color:#8c939d;margin-top:6px;text-align:center}
+
+/* Skin Model Selection Modal */
+.modal-backdrop{position:fixed;inset:0;background:rgba(6,8,11,0.78);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:grid;place-items:center;z-index:100;opacity:1;transition:opacity .2s ease}
+.modal-backdrop.hidden{display:none}
+.model-modal-dialog{width:90%;max-width:440px;background:#15181e;border:1px solid #2d333e;border-radius:12px;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,0.6);display:flex;flex-direction:column;gap:14px;animation:modalPop .18s cubic-bezier(0.16,1,0.3,1)}
+@keyframes modalPop{from{transform:scale(0.95);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-header{display:flex;align-items:center;justify-content:space-between}
+.modal-header h3{margin:0;font-size:15px;font-weight:600;color:#fff}
+.modal-subtitle{margin:-4px 0 6px;font-size:12px;color:#8e95a2}
+.model-options{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.model-card{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:18px 12px;background:#1a1e26;border:2px solid #2c3240;border-radius:8px;cursor:pointer;color:inherit;transition:all .15s ease}
+.model-card:hover{background:#212632;border-color:var(--blue);transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,0.35)}
+.model-card:focus-visible{outline:2px solid var(--blue)}
+.model-icon{font-size:32px;line-height:1}
+.model-name{font-size:13px;font-weight:600;color:#e3e7ee}
+.model-desc{font-size:11px;color:#808896}
+
