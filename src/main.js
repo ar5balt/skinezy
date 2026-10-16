@@ -149,7 +149,7 @@ function refresh(){
   $('#saveStatus').textContent=p.dirty?'Unsaved changes':'Saved';
   $('#saveStatus').classList.toggle('dirty',p.dirty);
   $('#canvasSize').textContent='64 × 64 px';
-  if(state.preview3d)state.preview3d.update(p.pixels);
+  if(state.preview3d)state.preview3d.update(pixels);
   updateTabs();
   updateHistory();
   syncMannequin();
@@ -416,11 +416,13 @@ function selectionUI(){
   if(!box)return;
   if(!s){
     box.classList.add('hidden');
+    box.classList.remove('floating');
     const info=$('#selectionInfo');
     if(info)info.textContent='No selection';
     return;
   }
   box.classList.remove('hidden');
+  box.classList.toggle('floating',Boolean(state.floating));
   box.style.left=`${s.x/64*100}%`;
   box.style.top=`${s.y/64*100}%`;
   box.style.width=`${s.w/64*100}%`;
@@ -469,7 +471,11 @@ function applyChosenModel(chosenModel){
 }
 
 function undo(){
-  if(state.floating)commitFloating();
+  if(state.floating){
+    state.floating=null;
+    state.selection=null;
+    selectionUI();
+  }
   const p=active();
   if(!p?.undo.length)return;
   p.redo.push(clonePixels(p.pixels));
@@ -479,7 +485,11 @@ function undo(){
 }
 
 function redo(){
-  if(state.floating)commitFloating();
+  if(state.floating){
+    state.floating=null;
+    state.selection=null;
+    selectionUI();
+  }
   const p=active();
   if(!p?.redo.length)return;
   p.undo.push(clonePixels(p.pixels));
@@ -489,13 +499,31 @@ function redo(){
 }
 
 function copy(cut=false){
-  if(state.floating)commitFloating();
-  const p=active(),s=state.selection;
-  if(!s){notify('Select a texture area first.');return;}
-  state.clipboard=captureSelection(p.pixels,s);
-  const shared=writeSharedClipboard(state.clipboard);
-  if(cut)clearSelection();
-  notify(shared?'Selection copied.':'Selection copied for this session; browser storage is unavailable for sharing it across tabs.');
+  let fragment;
+  if(state.floating){
+    fragment={
+      version:1,
+      width:state.floating.w,
+      height:state.floating.h,
+      x:state.floating.x,
+      y:state.floating.y,
+      pixels:new Uint8Array(state.floating.pixels)
+    };
+    if(cut){
+      state.floating=null;
+      state.selection=null;
+      selectionUI();
+      changed();
+    }
+  }else{
+    const p=active(),s=state.selection;
+    if(!s){notify('Select a texture area first.');return;}
+    fragment=captureSelection(p.pixels,s);
+    if(cut)clearSelection();
+  }
+  state.clipboard=fragment;
+  const shared=writeSharedClipboard(fragment);
+  notify(shared?(cut?'Selection cut.':'Selection copied.'):'Selection copied for this session.');
 }
 
 function clearSelection(){
@@ -503,7 +531,9 @@ function clearSelection(){
     state.floating=null;
     state.selection=null;
     selectionUI();
-    changed();
+    draw();
+    refresh();
+    notify('Floating fragment removed.');
     return;
   }
   const p=active(),s=state.selection;
@@ -514,18 +544,33 @@ function clearSelection(){
 }
 
 function paste(){
+  if(state.preview3d)switchView('textureView');
   if(state.floating)commitFloating();
   const clipboard=readSharedClipboard();
   if(clipboard)state.clipboard=clipboard;
-  if(!state.clipboard){notify('Clipboard is empty.');return;}
-  const pos=state.selection?{x:state.selection.x,y:state.selection.y}:null,c=state.clipboard,p=active();
-  const next=clonePixels(p.pixels);
-  const selection=pasteFragment(next,c,pos);
+  if(!state.clipboard){
+    notify('Clipboard is empty. Select an area and press Copy (Ctrl+C) first.');
+    return;
+  }
+  const c=state.clipboard;
+  let px=state.selection?state.selection.x:(c.x??0);
+  let py=state.selection?state.selection.y:(c.y??0);
+  px=Math.max(0,Math.min(64-c.width,px));
+  py=Math.max(0,Math.min(64-c.height,py));
   snapshot();
-  p.pixels=next;
-  state.selection=selection;
+  setTool('select');
+  state.floating={
+    x:px,
+    y:py,
+    w:c.width,
+    h:c.height,
+    pixels:new Uint8Array(c.pixels)
+  };
+  state.selection={x:px,y:py,w:c.width,h:c.height};
   selectionUI();
-  changed();
+  draw();
+  refresh();
+  notify(`Pasted ${c.width} × ${c.height} px fragment. Drag to move, press Enter to place.`);
 }
 
 async function importFile(file){
@@ -1022,47 +1067,86 @@ $('#themeSelect').onchange=e=>{
   schedulePersist();
 };
 
+function isKey(e,codeName,...keys){
+  if(e.code===codeName)return true;
+  const k=e.key?.toLowerCase();
+  return keys.some(key=>k===key.toLowerCase());
+}
+
 window.addEventListener('keydown',e=>{
   const tag=e.target.tagName;
   if(['INPUT','TEXTAREA','SELECT'].includes(tag)||e.target.isContentEditable)return;
-  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){
+
+  const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+
+  if(isCtrlOrMeta && isKey(e,'KeyZ','z','я')){
     e.preventDefault();
     e.shiftKey?redo():undo();
-  }else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){
+  }else if(isCtrlOrMeta && isKey(e,'KeyY','y','н')){
     e.preventDefault();
     redo();
-  }else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='o'){
+  }else if(isCtrlOrMeta && isKey(e,'KeyO','o','щ')){
     e.preventDefault();
     $('#openSkin').click();
-  }else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){
+  }else if(isCtrlOrMeta && isKey(e,'KeyS','s','ы')){
     e.preventDefault();
     exportPng();
-  }else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='c'){
+  }else if(isCtrlOrMeta && isKey(e,'KeyC','c','с')){
     e.preventDefault();
     copy();
-  }else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='x'){
+  }else if(isCtrlOrMeta && isKey(e,'KeyX','x','ч')){
     e.preventDefault();
     copy(true);
-  }else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v'){
+  }else if(isCtrlOrMeta && isKey(e,'KeyV','v','м')){
     e.preventDefault();
     paste();
-  }else if(e.key==='Delete'){
-    clearSelection();
+  }else if(e.key==='Delete'||e.key==='Backspace'){
+    if(state.selection||state.floating){
+      e.preventDefault();
+      clearSelection();
+    }
   }else if(e.key==='Escape'){
+    e.preventDefault();
     if(state.floating)commitFloating();
     state.preview=null;
     state.selection=null;
     selectionUI();
     refresh();
   }else if(e.key==='Enter'&&state.floating){
+    e.preventDefault();
     commitFloating();
-  }else if(e.key.toLowerCase()==='b'){
+  }else if(!isCtrlOrMeta && isKey(e,'KeyB','b','и')){
     setTool('pencil');
-  }else if(e.key.toLowerCase()==='i'){
+  }else if(!isCtrlOrMeta && isKey(e,'KeyI','i','ш')){
     setTool('eyedropper');
-  }else if(e.key.toLowerCase()==='e'){
+  }else if(!isCtrlOrMeta && isKey(e,'KeyE','e','у')){
     setTool('eraser');
+  }else if(!isCtrlOrMeta && isKey(e,'KeyM','m','ь')){
+    setTool('select');
   }
+});
+
+window.addEventListener('copy',e=>{
+  const tag=document.activeElement?.tagName;
+  if(['INPUT','TEXTAREA','SELECT'].includes(tag)||document.activeElement?.isContentEditable)return;
+  if(state.selection||state.floating){
+    e.preventDefault();
+    copy();
+  }
+});
+window.addEventListener('cut',e=>{
+  const tag=document.activeElement?.tagName;
+  if(['INPUT','TEXTAREA','SELECT'].includes(tag)||document.activeElement?.isContentEditable)return;
+  if(state.selection||state.floating){
+    e.preventDefault();
+    copy(true);
+  }
+});
+window.addEventListener('paste',e=>{
+  const tag=document.activeElement?.tagName;
+  if(['INPUT','TEXTAREA','SELECT'].includes(tag)||document.activeElement?.isContentEditable)return;
+  e.preventDefault();
+  paste();
 });
 
 window.addEventListener('pagehide',persistNow);

@@ -78,3 +78,5 @@ html[data-theme="light"]{--bg:#edf0f5;--panel:#f8f9fc;--panel2:#e5e9f0;--line:#c
 .mannequin-views{grid-template-columns:repeat(2,minmax(0,1fr))}.mannequin-views button{min-width:0;padding:0 2px;white-space:nowrap;font:9px 'DM Sans',Inter,Segoe UI,sans-serif;line-height:1}
 .canvas-frame.grid-on:after{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;background-image:linear-gradient(to right,#1118 1px,transparent 1px),linear-gradient(to bottom,#1118 1px,transparent 1px);background-size:calc(100% / 64) calc(100% / 64)}.selection-outline{z-index:3}
 .selection-actions+.selection-actions{margin-top:6px}.selection-actions .secondary-button{flex:1}
+.selection-outline.floating{border:1.5px dashed #8296ff;box-shadow:0 0 0 1px #000,0 0 10px rgba(103,129,255,0.7);animation:dashFloating .6s linear infinite}
+@keyframes dashFloating{to{border-color:#fff}}

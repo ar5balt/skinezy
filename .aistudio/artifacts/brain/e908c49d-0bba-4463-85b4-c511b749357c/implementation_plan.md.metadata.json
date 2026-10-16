@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for fixing 3D layer painting, reorganizing sidebar panels, moving the interactive mannequin to a semi-transparent HUD in the canvas top-right, creating a slide-out Filters drawer in the left rail, and implementing skin model selection dialog on import/creation.",
-  "updatedAt": "2026-10-15T22:20:58.821120757Z",
+  "summary": "Implementation plan to fix texture area copying and pasting:\n- Add layout-independent keyboard shortcut handling (supporting Russian / Cyrillic layout via e.code)\n- Implement pasting as an interactive floating movable fragment that can be dragged across the canvas and committed\n- Support copying and cutting both static selections and active floating fragments\n- Add toolbar/context buttons for Copy, Cut, Paste and visual feedback notifications",
+  "updatedAt": "2026-10-16T13:38:58.436562988Z",
   "requestFeedback": true,
   "userFacing": true
 }
