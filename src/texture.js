@@ -1,9 +1,88 @@
 // Exact RGBA pixel buffer utilities and a small standards-based PNG codec.
+import { skinRegions } from './minecraft/uvMaps.js';
+
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 
 export function blankTexture(color = [0, 0, 0, 0]) {
   const pixels = new Uint8Array(64 * 64 * 4);
   for (let i = 0; i < pixels.length; i += 4) pixels.set(color, i);
+  return pixels;
+}
+
+export function createDefaultSkin(model = 'classic') {
+  const pixels = blankTexture();
+  const regions = skinRegions(model);
+  const alex = model === 'slim';
+  const skin = alex ? [235, 190, 151, 255] : [198, 146, 112, 255];
+  const hair = alex ? [184, 111, 68, 255] : [69, 42, 29, 255];
+  const shirt = alex ? [101, 145, 79, 255] : [55, 112, 166, 255];
+  const shirtShade = alex ? [73, 111, 58, 255] : [39, 83, 130, 255];
+  const pants = alex ? [104, 73, 48, 255] : [54, 48, 105, 255];
+  const boot = alex ? [64, 48, 38, 255] : [74, 49, 38, 255];
+  const eye = alex ? [76, 135, 75, 255] : [65, 105, 160, 255];
+  const paint = (rect, color, inset = 0) => {
+    const [x, y, x2, y2] = rect;
+    for (let py = y + inset; py < y2 - inset; py++) for (let px = x + inset; px < x2 - inset; px++) {
+      pixels.set(color, pixelOffset(px, py));
+    }
+  };
+  const face = (part, faceIndex, color) => paint(regions[part][faceIndex], color);
+
+  for (const part of ['head']) {
+    regions[part].forEach((_, i) => face(part, i, skin));
+  }
+  face('head', 2, hair);
+  face('head', 5, hair);
+  paint(regions.head[0], hair, 0);
+  paint(regions.head[1], hair, 0);
+  const [fx, fy, fx2] = regions.head[4];
+  paint([fx, fy, fx2, fy + 2], hair);
+  paint([fx, fy + 2, fx + 2, fy + 3], hair);
+  paint([fx2 - 2, fy + 2, fx2, fy + 3], hair);
+  paint([fx + 1, fy + 4, fx + 3, fy + 5], [245, 245, 245, 255]);
+  paint([fx2 - 3, fy + 4, fx2 - 1, fy + 5], [245, 245, 245, 255]);
+  paint([fx + 2, fy + 4, fx + 3, fy + 5], eye);
+  paint([fx2 - 2, fy + 4, fx2 - 1, fy + 5], eye);
+  paint([fx + 3, fy + 6, fx2 - 3, fy + 7], [132, 77, 57, 255]);
+
+  for (const part of ['body']) regions[part].forEach((_, i) => face(part, i, shirt));
+  for (const part of ['rightArm', 'leftArm']) {
+    regions[part].forEach((rect, i) => {
+      face(part, i, shirt);
+      const [x, y, x2, y2] = rect;
+      paint([x, y + Math.max(1, y2 - y - 3), x2, y2], skin);
+    });
+  }
+  for (const part of ['rightLeg', 'leftLeg']) {
+    regions[part].forEach((rect, i) => {
+      face(part, i, pants);
+      const [x, , x2, y2] = rect;
+      paint([x, y2 - 2, x2, y2], boot);
+    });
+  }
+
+  const [bx, by, bx2, by2] = regions.body[4];
+  paint([bx + 2, by, bx2 - 2, by + 2], skin);
+  paint([bx + 3, by + 2, bx + 5, by + 4], [190, 150, 84, 255]);
+  paint([bx, by + 5, bx + 1, by2], shirtShade);
+  paint([bx2 - 1, by + 5, bx2, by2], shirtShade);
+
+  for (const part of ['hat', 'jacket', 'rightSleeve', 'leftSleeve', 'rightPants', 'leftPants']) {
+    const faces = regions[part];
+    if (part === 'hat') {
+      faces.forEach((rect, i) => {
+        if (i === 2 || i === 5) paint(rect, hair);
+        else if (i === 4 || i === 0 || i === 1) {
+          const [x, y, x2, y2] = rect;
+          paint([x, y, x2, Math.min(y2, y + 2)], hair);
+        }
+      });
+    } else if (part === 'jacket') {
+      faces.forEach(rect => paint(rect, shirtShade, 1));
+    } else {
+      faces.forEach(rect => paint(rect, part.includes('Pants') ? pants : shirtShade, 1));
+    }
+  }
   return pixels;
 }
 

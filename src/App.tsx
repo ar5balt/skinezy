@@ -1,7 +1,7 @@
 import { useEffect, type CSSProperties } from 'react';
 
 export default function App() {
-  useEffect(() => { void import('./main.js'); }, []);
+  useEffect(() => { void import('./main.js').then(() => { window.setTimeout(() => document.body.classList.add('app-ready'), 460); }); }, []);
   return <div className="app-shell">
     <header className="topbar">
       <a className="brand" href="#" aria-label="Skinezy Studio"><span className="brand-mark">S</span><span>skinezy<span className="brand-light"> studio</span></span></a>
@@ -11,10 +11,9 @@ export default function App() {
         <button id="saveSkin" className="top-button primary" type="button"><span>↓</span> Export PNG</button>
         <span className="divider" />
         <button id="undo" className="icon-button" title="Undo (Ctrl+Z)" aria-label="Undo" type="button">↶</button>
-        <button id="redo" className="icon-button" title="Redo (Ctrl+Y)" aria-label="Redo" type="button">↷</button>
+        <button id="redo" className="icon-button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" type="button">↷</button>
         <span className="divider" />
-        <button id="compare" className="top-button" type="button"><span>▦</span> Compare</button>
-        <button className="icon-button settings" title="Settings" type="button">⚙</button>
+        <button id="settings" className="icon-button settings" title="Settings" aria-label="Settings" type="button">⚙</button>
       </div>
       <input id="fileInput" type="file" accept="image/png,.png" hidden />
     </header>
@@ -68,13 +67,13 @@ export default function App() {
 
       <section className="canvas-area">
         <div className="canvas-toolbar">
-          <div className="view-tabs"><button id="textureView" className="view-tab active" type="button">Texture editor</button><button id="rawView" className="view-tab" type="button">Raw texture</button><button id="preview3d" className="view-tab" type="button">3D preview</button></div>
-          <div className="canvas-controls"><label id="uvToggleWrap" className="uv-toggle hidden"><input id="uvToggle" type="checkbox" defaultChecked /> UV map</label><span id="zoomLabel">800%</span><button id="zoomOut" className="mini-button" title="Zoom out" type="button">−</button><button id="zoomIn" className="mini-button" title="Zoom in" type="button">＋</button><button id="fitCanvas" className="mini-button" title="Fit canvas" type="button">⛶</button></div>
+          <div className="view-tabs"><button id="textureView" className="view-tab active" type="button">Texture editor</button><button id="preview3d" className="view-tab" type="button">3D preview</button></div>
+          <div className="canvas-controls"><label id="uvToggleWrap" className="uv-toggle"><input id="uvToggle" type="checkbox" /> UV map</label><span id="zoomLabel">800%</span><button id="zoomOut" className="mini-button" title="Zoom out" type="button">−</button><button id="zoomIn" className="mini-button" title="Zoom in" type="button">＋</button><button id="fitCanvas" className="mini-button" title="Fit canvas" type="button">⛶</button></div>
         </div>
         <div id="canvasStage" className="canvas-stage">
           <div className="canvas-frame"><canvas id="skinCanvas" width={64} height={64} aria-label="64 by 64 pixel skin texture" /><div id="selectionOutline" className="selection-outline hidden" /></div>
           <div id="bodyMannequin" className="canvas-mannequin-hud" aria-label="Body parts and layer visibility">
-            <div className="mannequin-hud-header">
+            <div className="mannequin-hud-header" id="mannequinDragHandle">
               <span className="mannequin-hud-title">Parts & Layers</span>
               <div className="mannequin-actions">
                 <button id="mannequinAll" className="mini-hud-btn" title="Show all parts" type="button">All</button>
@@ -123,6 +122,12 @@ export default function App() {
                 </g>
               </svg>
               <div id="mannequinStatus" className="mannequin-status">6/6 parts · Both layers</div>
+              <div className="mannequin-views" aria-label="3D camera views">
+                <button data-camera-view="front" type="button">Front</button>
+                <button data-camera-view="side" type="button">Side</button>
+                <button data-camera-view="back" type="button">Back</button>
+                <button data-camera-view="reset" type="button">Reset</button>
+              </div>
             </div>
           </div>
         </div>
@@ -132,8 +137,11 @@ export default function App() {
       <aside className="inspector" aria-label="Editor properties">
         <section className="panel-section color-section">
           <div className="section-heading"><h2>Color</h2><button className="quiet-button" id="swapColors" title="Swap foreground/background" type="button">⇄</button></div>
-          <div className="color-row"><input id="colorPicker" type="color" defaultValue="#5d7cff" aria-label="Choose color" /><div className="color-values"><label htmlFor="hexColor">HEX</label><input id="hexColor" defaultValue="#5D7CFF" maxLength={7} /><label htmlFor="rgbaColor">RGBA</label><input id="rgbaColor" defaultValue="93, 124, 255, 255" /></div></div>
+          <div id="colorSpectrum" className="color-spectrum" role="application" aria-label="Color gradient selector" tabIndex={0}><span id="colorSpectrumMarker" className="color-spectrum-marker" /></div>
+          <label className="setting-label hue-label" htmlFor="hueSlider"><span>Hue</span></label><input id="hueSlider" type="range" min={0} max={360} defaultValue={225} aria-label="Hue" />
+          <div className="color-row"><div id="colorPreview" className="current-color" aria-label="Current color" /><input id="colorPicker" type="color" defaultValue="#5d7cff" aria-label="Current color" hidden /><div className="color-values"><label htmlFor="hexColor">HEX</label><input id="hexColor" defaultValue="#5D7CFF" maxLength={7} /><label htmlFor="rgbaColor">RGBA</label><input id="rgbaColor" defaultValue="93, 124, 255, 255" /></div></div>
           <div className="swatches" id="swatches"><button className="swatch" style={{ '--swatch': '#5d7cff' } as CSSProperties} type="button" aria-label="Blue"/><button className="swatch" style={{ '--swatch': '#f27475' } as CSSProperties} type="button" aria-label="Red"/><button className="swatch" style={{ '--swatch': '#f5bd4f' } as CSSProperties} type="button" aria-label="Yellow"/><button className="swatch" style={{ '--swatch': '#47c99a' } as CSSProperties} type="button" aria-label="Green"/><button className="swatch" style={{ '--swatch': '#a477ee' } as CSSProperties} type="button" aria-label="Purple"/><button className="swatch add-swatch" title="Add current color" type="button">＋</button></div>
+          <div id="recentColors" className="recent-colors" aria-label="Recently used colors" />
         </section>
         <section className="panel-section tool-settings"><div className="section-heading"><h2>Tool settings</h2></div>
           <label className="setting-label"><span>Brush size</span><span id="sizeValue">1 px</span></label><input id="brushSize" type="range" min={1} max={16} defaultValue={1} />
@@ -141,7 +149,7 @@ export default function App() {
           <label className="check-row"><input id="fixedSeed" type="checkbox" defaultChecked /> Use fixed seed</label>
           <div className="setting-separator" />
           <label className="setting-label"><span>Fill tolerance</span><span id="toleranceValue">0</span></label><input id="tolerance" type="range" min={0} max={255} defaultValue={0} />
-          <label className="setting-label"><span>Intensity</span><span id="intensityValue">10%</span></label><input id="intensity" type="range" min={5} max={30} step={5} defaultValue={10} />
+          <label className="setting-label"><span>Intensity</span><span id="intensityValue">10%</span></label><input id="intensity" type="range" min={5} max={100} step={5} defaultValue={10} />
         </section>
       </aside>
     </main>
@@ -165,7 +173,18 @@ export default function App() {
           </button>
         </div>
       </div>
+      <div id="settingsModal" className="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <div className="settings-dialog">
+          <div className="modal-header"><h3 id="settingsTitle">Settings</h3><button id="closeSettings" className="icon-button" type="button" aria-label="Close">✕</button></div>
+          <label className="settings-theme-label" htmlFor="themeSelect">Color theme</label>
+          <select id="themeSelect" className="theme-select">
+            <option value="dark">Dark</option>
+            <option value="midnight">Midnight</option>
+            <option value="light">Light</option>
+            <option value="forest">Forest</option>
+          </select>
+        </div>
+      </div>
     </div>
-    <section id="comparePanel" className="compare-panel hidden"><div className="compare-heading"><div><h2>Skin comparison</h2><p>Compare aligned 64 × 64 texture pixels</p></div><button id="closeCompare" className="icon-button" type="button">×</button></div><div className="compare-controls"><label>Base <select id="compareBase" /></label><label>Other <select id="compareOther" /></label><label>Mode <select id="compareMode"><option value="side">Side by side</option><option value="diff">Difference</option><option value="overlay">Overlay</option></select></label><label id="overlayOpacityWrap" className="hidden">Opacity <input id="overlayOpacity" type="range" min={0} max={100} defaultValue={50} /></label></div><div id="compareGrid" className="compare-grid" /></section>
   </div>;
 }

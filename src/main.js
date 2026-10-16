@@ -1,7 +1,7 @@
-import { blankTexture, clonePixels, decodePng, encodePng, pixelOffset } from './texture.js';
-import { drawLine, floodFill, filterPixels, transformSelection, extractFragment, clearRegion, blitFragment } from './operations.js';
+import { blankTexture, clonePixels, createDefaultSkin, decodePng, encodePng, pixelOffset } from './texture.js';
+import { drawLine, floodFill, filterPixels, transformSelection, extractFragment, clearRegion, blitFragment, rgbToHsv, hsvToRgb } from './operations.js';
 import { mountSkinPreview } from './preview3d/skinPreview.js';
-import { skinRegions, SKIN_UV_REGIONS } from './minecraft/uvMaps.js';
+import { skinRegions, skinLayerRegions } from './minecraft/uvMaps.js';
 
 const canvas=document.querySelector('#skinCanvas'), ctx=canvas.getContext('2d',{alpha:true});
 const state={
@@ -9,6 +9,8 @@ const state={
   active:null,
   tool:'pencil',
   color:[93,124,255,255],
+  hue:225,
+  recentColors:[],
   background:[255,255,255,255],
   size:1,
   noise:0,
@@ -28,6 +30,8 @@ const state={
   layer:'both'
 };
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const PERSIST_KEY='skinezy.browser-session.v1';
+let persistTimer=null,storageWarningShown=false;
 const filterSettings={grayscale:{min:0,max:100,value:100,unit:'%'},sepia:{min:0,max:100,value:100,unit:'%'},invert:{min:0,max:100,value:100,unit:'%'},brightness:{min:-100,max:100,value:20,unit:'%'},contrast:{min:-100,max:100,value:20,unit:'%'},saturation:{min:-100,max:100,value:20,unit:'%'},hue:{min:-180,max:180,value:30,unit:'°'},warm:{min:-100,max:100,value:20,unit:'%'},colorize:{min:0,max:100,value:100,unit:'%'},posterize:{min:2,max:16,value:6,unit:' levels'}};
 
 const LIMB_TO_UV={
@@ -39,7 +43,64 @@ const LIMB_TO_UV={
   leftLeg:['leftLeg','leftPants']
 };
 
-function project(name='Untitled skin',pixels=blankTexture()){return{id:crypto.randomUUID(),name,pixels,savedPixels:clonePixels(pixels),undo:[],redo:[],dirty:false,model:'classic'};}
+function project(name='Untitled skin',pixels=createDefaultSkin('classic')){return{id:crypto.randomUUID(),name,pixels,savedPixels:clonePixels(pixels),undo:[],redo:[],dirty:false,model:'classic'};}
+function encodePixels(pixels){return btoa(String.fromCharCode(...pixels));}
+function decodePixels(encoded){
+  const binary=atob(encoded);
+  if(binary.length!==64*64*4)throw new Error('Stored skin has an invalid pixel buffer.');
+  const pixels=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)pixels[i]=binary.charCodeAt(i);
+  return pixels;
+}
+function schedulePersist(){
+  clearTimeout(persistTimer);
+  persistTimer=setTimeout(persistNow,180);
+}
+function persistNow(){
+  clearTimeout(persistTimer);
+  try{
+    localStorage.setItem(PERSIST_KEY,JSON.stringify({
+      active:state.active,
+      projects:state.projects.map(p=>({id:p.id,name:p.name,model:p.model,pixels:encodePixels(p.pixels),savedPixels:encodePixels(p.savedPixels),dirty:p.dirty})),
+      color:state.color,
+      recentColors:state.recentColors,
+      hue:state.hue,
+      theme:document.documentElement.dataset.theme||'dark'
+    }));
+    storageWarningShown=false;
+  }catch(error){
+    console.error('Could not save the current skin session to browser storage.',error);
+    if(!storageWarningShown){notify('Browser storage is unavailable or full; your latest edits may not persist.');storageWarningShown=true;}
+  }
+}
+function restorePersistedState(){
+  try{
+    const raw=localStorage.getItem(PERSIST_KEY);
+    if(!raw)return false;
+    const saved=JSON.parse(raw);
+    if(!Array.isArray(saved.projects))throw new Error('Stored skin session has invalid project data.');
+    const restored=saved.projects.map(item=>{
+      if(typeof item.id!=='string'||typeof item.name!=='string'||!['classic','slim'].includes(item.model))throw new Error('Stored skin project metadata is invalid.');
+      const pixels=decodePixels(item.pixels),savedPixels=decodePixels(item.savedPixels);
+      return{id:item.id,name:item.name,pixels,savedPixels,undo:[],redo:[],dirty:Boolean(item.dirty)||!samePixels(pixels,savedPixels),model:item.model};
+    });
+    if(!restored.length)return false;
+    state.projects=restored;
+    state.active=restored.some(p=>p.id===saved.active)?saved.active:restored[0].id;
+    state.model=active().model;
+    state.recentColors=Array.isArray(saved.recentColors)?saved.recentColors.filter(c=>/^#[0-9a-f]{6}$/i.test(c)).slice(0,10):[];
+    if(Array.isArray(saved.color)&&saved.color.length===4&&saved.color.every(c=>Number.isInteger(c)&&c>=0&&c<=255))state.color=saved.color;
+    if(Number.isFinite(saved.hue))state.hue=Math.max(0,Math.min(360,saved.hue));
+    const theme=['dark','midnight','light','forest'].includes(saved.theme)?saved.theme:'dark';
+    document.documentElement.dataset.theme=theme;
+    $('#themeSelect').value=theme;
+    return true;
+  }catch(error){
+    console.error('Could not restore the saved skin session.',error);
+    notify('The saved browser session could not be restored; a new skin will be opened.');
+    return false;
+  }
+}
 function samePixels(a,b){if(a.length!==b.length)return false;for(let i=0;i<a.length;i++)if(a[i]!==b[i])return false;return true;}
 function hasUnsavedChanges(p){return !p||!samePixels(p.pixels,p.savedPixels);}
 function active(){return state.projects.find(p=>p.id===state.active)||state.projects[0];}
@@ -72,6 +133,7 @@ function draw(){
   image.data.set(pixels);
   ctx.putImageData(image,0,0);
   canvas.classList.toggle('grid-on',state.grid);
+  $('.canvas-frame').classList.toggle('grid-on',state.grid);
 }
 
 function refresh(){
@@ -82,6 +144,7 @@ function refresh(){
   image.data.set(pixels);
   ctx.putImageData(image,0,0);
   canvas.classList.toggle('grid-on',state.grid);
+  $('.canvas-frame').classList.toggle('grid-on',state.grid);
   $('#saveStatus').textContent=p.dirty?'Unsaved changes':'Saved';
   $('#saveStatus').classList.toggle('dirty',p.dirty);
   $('#canvasSize').textContent='64 × 64 px';
@@ -89,7 +152,7 @@ function refresh(){
   updateTabs();
   updateHistory();
   syncMannequin();
-  if(!$('#comparePanel').classList.contains('hidden'))renderCompare();
+  schedulePersist();
 }
 
 function updateHistory(){const p=active();$('#undo').disabled=!p?.undo.length;$('#redo').disabled=!p?.redo.length;}
@@ -109,6 +172,7 @@ function updateTabs(){
         state.model=p.model;
         state.selection=null;
         state.preview=null;
+        renderUvOverlayRects(state.model);
         $$('.model-button').forEach(b=>b.classList.toggle('active',b.dataset.model===state.model));
         if(modelChanged&&state.preview3d){
           state.preview3d.dispose();
@@ -123,8 +187,79 @@ function updateTabs(){
 
 function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function notify(message){let el=$('#toast');if(!el){el=document.createElement('div');el.id='toast';el.className='toast';document.body.append(el);}el.textContent=message;el.classList.add('show');clearTimeout(notify.timer);notify.timer=setTimeout(()=>el.classList.remove('show'),2600);}
-function setColor(rgb){state.color=rgb;const hex='#'+rgb.slice(0,3).map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();$('#colorPicker').value=hex;$('#hexColor').value=hex;$('#rgbaColor').value=rgb.join(', ');}
+function setColor(rgb,record=true){
+  state.color=rgb;
+  const hex='#'+rgb.slice(0,3).map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();
+  $('#colorPicker').value=hex;$('#hexColor').value=hex;$('#rgbaColor').value=rgb.join(', ');
+  $('#colorPreview').style.backgroundColor=hex;
+  const [h,s,v]=rgbToHsv(...rgb);
+  if(s>0&&v>0)state.hue=Math.round(h*360);
+  $('#hueSlider').value=state.hue;
+  updateColorSpectrum();
+  if(record&&rgb[3]!==0){
+    state.recentColors=[hex,...state.recentColors.filter(c=>c!==hex)].slice(0,10);
+    renderRecentColors();
+  }
+  schedulePersist();
+}
+
+function updateColorSpectrum(){
+  $('#colorSpectrum').style.setProperty('--hue-color',`hsl(${state.hue} 100% 50%)`);
+  const [h,s,v]=rgbToHsv(...state.color);
+  const marker=$('#colorSpectrumMarker');
+  marker.style.left=`${s*100}%`;
+  marker.style.top=`${(1-v)*100}%`;
+}
+
+function renderRecentColors(){
+  const host=$('#recentColors');
+  host.replaceChildren();
+  for(const color of state.recentColors){
+    const swatch=document.createElement('button');
+    swatch.type='button';swatch.className='swatch recent-swatch';swatch.style.setProperty('--swatch',color);
+    swatch.title=color;swatch.setAttribute('aria-label',`Use recent color ${color}`);
+    swatch.onclick=()=>setColor([parseInt(color.slice(1,3),16),parseInt(color.slice(3,5),16),parseInt(color.slice(5,7),16),255]);
+    host.append(swatch);
+  }
+}
+
+function pickSpectrumColor(e){
+  const box=$('#colorSpectrum').getBoundingClientRect();
+  const s=Math.max(0,Math.min(1,(e.clientX-box.left)/box.width));
+  const v=1-Math.max(0,Math.min(1,(e.clientY-box.top)/box.height));
+  const [r,g,b]=hsvToRgb(state.hue/360,s,v);
+  setColor([r,g,b,255]);
+}
+
+$('#colorSpectrum').addEventListener('pointerdown',e=>{
+  e.preventDefault();$('#colorSpectrum').setPointerCapture(e.pointerId);pickSpectrumColor(e);
+});
+$('#colorSpectrum').addEventListener('pointermove',e=>{if(e.buttons===1)pickSpectrumColor(e);});
+$('#colorSpectrum').addEventListener('keydown',e=>{
+  if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))return;
+  e.preventDefault();
+  const [h,s,v]=rgbToHsv(...state.color);
+  const nextS=Math.max(0,Math.min(1,s+(e.key==='ArrowRight'?0.02:e.key==='ArrowLeft'?-0.02:0)));
+  const nextV=Math.max(0,Math.min(1,v+(e.key==='ArrowUp'?0.02:e.key==='ArrowDown'?-0.02:0)));
+  setColor(hsvToRgb(h,nextS,nextV).concat(255));
+});
+$('#hueSlider').oninput=e=>{
+  state.hue=+e.target.value;
+  const [,s,v]=rgbToHsv(...state.color);
+  setColor(hsvToRgb(state.hue/360,s,v).concat(255));
+  state.hue=+e.target.value;
+  $('#hueSlider').value=state.hue;
+  $('#colorSpectrum').style.setProperty('--hue-color',`hsl(${state.hue} 100% 50%)`);
+};
 function point(e){const rect=canvas.getBoundingClientRect();return{x:Math.min(63,Math.max(0,Math.floor((e.clientX-rect.left)/rect.width*64))),y:Math.min(63,Math.max(0,Math.floor((e.clientY-rect.top)/rect.height*64)))};}
+function uvFaceBounds(x,y){
+  for(const faces of Object.values(skinRegions(state.model))){
+    for(const [left,top,right,bottom] of faces){
+      if(x>=left&&x<right&&y>=top&&y<bottom)return{x:left,y:top,w:right-left,h:bottom-top};
+    }
+  }
+  return null;
+}
 
 function setTool(tool){
   if(state.tool!==tool&&state.floating)commitFloating();
@@ -146,8 +281,10 @@ function onDown(e){
   }
   if(state.tool==='fill'){
     commitFloating();
+    const bounds=uvFaceBounds(pos.x,pos.y);
+    if(!bounds){notify('Fill is available inside a body-part face on the skin map.');return;}
     const next=clonePixels(p.pixels);
-    if(!floodFill(next,pos.x,pos.y,state.color,state.tolerance,state.selection))return;
+    if(!floodFill(next,pos.x,pos.y,state.color,state.tolerance,state.selection,bounds))return;
     snapshot();
     p.pixels=next;
     changed();
@@ -305,7 +442,7 @@ function applyChosenModel(chosenModel){
   hideModelModal();
   if(state.floating)commitFloating();
   if(action.type==='new'){
-    const p=project('Untitled skin',blankTexture());
+    const p=project('Untitled skin',createDefaultSkin(chosenModel));
     p.model=chosenModel;
     state.projects.push(p);
     state.active=p.id;
@@ -424,7 +561,11 @@ function closeProject(id){
   const p=state.projects.find(x=>x.id===id);
   if(p?.dirty&&!confirm(`Discard unsaved changes to “${p.name}”?`))return;
   state.projects=state.projects.filter(x=>x.id!==id);
-  if(!state.projects.length)state.projects.push(project());
+  if(!state.projects.length){
+    const fresh=project('Untitled skin',createDefaultSkin(state.model));
+    fresh.model=state.model;
+    state.projects.push(fresh);
+  }
   if(state.active===id)state.active=state.projects[0].id;
   state.selection=null;
   refresh();
@@ -479,11 +620,41 @@ $('#swatches').onclick=e=>{
   }
 };
 
-$('#gridToggle').onclick=()=>{state.grid=!state.grid;$('#gridToggle').classList.toggle('active',state.grid);refresh();};
+$('#gridToggle').onclick=()=>{
+  state.grid=!state.grid;
+  $('#gridToggle').classList.toggle('active',state.grid);
+  $('#gridToggle').setAttribute('aria-pressed',String(state.grid));
+  state.preview3d?.setGridVisible(state.grid);
+  refresh();
+};
 function updateZoom(){const frame=$('.canvas-frame');frame.style.width=`${state.zoom*64}px`;frame.style.height=`${state.zoom*64}px`;$('#zoomLabel').textContent=`${state.zoom*100}%`;}
-$('#zoomIn').onclick=()=>{state.zoom=Math.min(16,state.zoom+1);updateZoom();};
-$('#zoomOut').onclick=()=>{state.zoom=Math.max(2,state.zoom-1);updateZoom();};
-$('#fitCanvas').onclick=()=>{state.zoom=Math.max(2,Math.min(12,Math.floor(Math.min($('#canvasStage').clientWidth-80,$('#canvasStage').clientHeight-80)/64)));updateZoom();};
+function zoomPreview(factor){
+  const preview=state.preview3d;
+  if(!preview)return;
+  preview.zoom(factor);
+  $('#zoomLabel').textContent=`${Math.round(preview.getZoom())}%`;
+}
+$('#zoomIn').onclick=()=>state.preview3d?zoomPreview(1/1.2):(state.zoom=Math.min(16,state.zoom+1),updateZoom());
+$('#zoomOut').onclick=()=>state.preview3d?zoomPreview(1.2):(state.zoom=Math.max(2,state.zoom-1),updateZoom());
+async function toggleFullscreen(){
+  const stage=$('#canvasStage');
+  try{
+    if(document.fullscreenElement)await document.exitFullscreen();
+    else await stage.requestFullscreen();
+  }catch(error){console.error('Could not toggle preview fullscreen.',error);notify('Fullscreen mode is not available in this browser.');}
+}
+$('#fitCanvas').onclick=()=>state.preview3d?toggleFullscreen():(state.zoom=Math.max(2,Math.min(12,Math.floor(Math.min($('#canvasStage').clientWidth-80,$('#canvasStage').clientHeight-80)/64))),updateZoom());
+$('#fitCanvas').title='Fit canvas / toggle fullscreen';
+$('#canvasStage').addEventListener('wheel',e=>{
+  if(state.preview3d||!e.target.closest('#skinCanvas'))return;
+  e.preventDefault();
+  state.zoom=Math.max(2,Math.min(16,state.zoom+(e.deltaY<0?1:-1)));
+  updateZoom();
+},{passive:false});
+window.addEventListener('mousedown',e=>{
+  if(e.button===3||e.button===4){e.preventDefault();e.button===3?undo():redo();}
+},true);
+window.addEventListener('auxclick',e=>{if(e.button===3||e.button===4)e.preventDefault();},true);
 
 function configureFilter(type){
   state.filter=type;
@@ -528,66 +699,6 @@ $('#flipSelectionH')?.addEventListener('click',()=>applySelectionTransform('flip
 $('#flipSelectionV')?.addEventListener('click',()=>applySelectionTransform('flipV'));
 $('#rotateSelection')?.addEventListener('click',()=>applySelectionTransform('rotateCW'));
 
-$('#compare').onclick=()=>{$('#comparePanel').classList.toggle('hidden');renderCompare();};
-$('#closeCompare').onclick=()=>$('#comparePanel').classList.add('hidden');
-function renderCompare(){
-  const grid=$('#compareGrid'),baseSelect=$('#compareBase'),otherSelect=$('#compareOther');
-  grid.innerHTML='';
-  for(const select of [baseSelect,otherSelect]){
-    const previous=select.value;
-    select.innerHTML='';
-    for(const p of state.projects){
-      const option=document.createElement('option');
-      option.value=p.id;
-      option.textContent=p.name;
-      select.append(option);
-    }
-    if(state.projects.some(p=>p.id===previous))select.value=previous;
-  }
-  if(!state.projects.length)return;
-  if(!baseSelect.value)baseSelect.value=state.active;
-  if(!otherSelect.value)otherSelect.value=state.projects.find(p=>p.id!==baseSelect.value)?.id||baseSelect.value;
-  const a=state.projects.find(p=>p.id===baseSelect.value)||state.projects[0],b=state.projects.find(p=>p.id===otherSelect.value)||a,mode=$('#compareMode').value;
-  $('#overlayOpacityWrap').classList.toggle('hidden',mode!=='overlay');
-  const makeCard=(name,pixels)=>{
-    const card=document.createElement('div');
-    card.className='compare-card';
-    const head=document.createElement('div');
-    head.className='compare-card-title';
-    head.textContent=name;
-    const c=document.createElement('canvas');
-    c.width=c.height=64;
-    c.className='compare-canvas';
-    const im=c.getContext('2d').createImageData(64,64);
-    im.data.set(pixels);
-    c.getContext('2d').putImageData(im,0,0);
-    card.append(head,c);
-    grid.append(card);
-  };
-  if(mode==='side'){makeCard(a.name,a.pixels);if(a.id!==b.id)makeCard(b.name,b.pixels);return;}
-  const result=new Uint8Array(64*64*4);
-  if(mode==='diff'){
-    for(let i=0;i<result.length;i+=4){
-      let diff=false;
-      for(let k=0;k<3;k++){result[i+k]=Math.abs(a.pixels[i+k]-b.pixels[i+k]);diff||=result[i+k]!==0;}
-      diff||=a.pixels[i+3]!==b.pixels[i+3];
-      result[i+3]=diff?255:0;
-    }
-  }else{
-    const opacity=+$('#overlayOpacity').value/100;
-    for(let i=0;i<result.length;i+=4){
-      const aa=a.pixels[i+3]/255,ab=(b.pixels[i+3]/255)*opacity,outA=ab+aa*(1-ab);
-      result[i+3]=Math.round(outA*255);
-      for(let k=0;k<3;k++)result[i+k]=outA?Math.round((b.pixels[i+k]*ab+a.pixels[i+k]*aa*(1-ab))/outA):0;
-    }
-  }
-  makeCard(mode==='diff'?`Pixel difference: ${a.name} vs ${b.name}`:`${a.name} with ${b.name} overlay`,result);
-}
-$('#compareBase').onchange=renderCompare;
-$('#compareOther').onchange=renderCompare;
-$('#compareMode').onchange=renderCompare;
-$('#overlayOpacity').oninput=renderCompare;
-
 function setModel(model){
   state.model=model;
   const p=active();
@@ -599,6 +710,7 @@ function setModel(model){
     state.preview3d.dispose();
     if(host)mount3D(host);
   }
+  refresh();
 }
 
 function handle3DHover(pos){
@@ -610,14 +722,24 @@ function handle3DHover(pos){
     $('#pixelInfo').textContent='X: —   Y: —   RGBA: —';
   }
 }
+function get3DFaceBounds(pos){
+  if(!pos.bounds)return null;
+  return{x:pos.bounds[0],y:pos.bounds[1],w:pos.bounds[2]-pos.bounds[0],h:pos.bounds[3]-pos.bounds[1]};
+}
+function get3DLayerRegions(layer){
+  return skinLayerRegions(state.model,layer==='base'?'base':'outer');
+}
 function handle3DDown(pos){
   const p=active();
   const i=pixelOffset(pos.x,pos.y);
+  const allowedRegions=get3DLayerRegions(pos.layer||state.layer);
   $('#pixelInfo').textContent=`X: ${pos.x}   Y: ${pos.y}   RGBA: ${Array.from(p.pixels.slice(i,i+4)).join(', ')}`;
   if(state.tool==='eyedropper'){setColor(Array.from(p.pixels.slice(i,i+4)));return;}
   if(state.tool==='fill'){
     const next=clonePixels(p.pixels);
-    if(!floodFill(next,pos.x,pos.y,state.color,state.tolerance,null))return;
+    const bounds=get3DFaceBounds(pos);
+    if(!bounds){notify('Could not determine the selected body-part face.');return;}
+    if(!floodFill(next,pos.x,pos.y,state.color,state.tolerance,null,bounds,allowedRegions))return;
     snapshot();
     p.pixels=next;
     changed();
@@ -627,7 +749,7 @@ function handle3DDown(pos){
   if(state.tool==='brush')state.seed=$('#fixedSeed').checked?17321:crypto.getRandomValues(new Uint32Array(1))[0];
   state.drag={kind:'draw',last:pos,before:clonePixels(p.pixels)};
   let mode=state.tool==='eraser'?'eraser':state.tool==='brush'?'brush':state.tool==='lighten'?'lighten':state.tool==='darken'?'darken':'pencil';
-  drawLine(p.pixels,pos,pos,{color:state.color,size:state.size,mode,noise:mode==='brush'?state.noise:0,seed:mode==='lighten'||mode==='darken'?state.intensity:state.seed,selection:null});
+  drawLine(p.pixels,pos,pos,{color:state.color,size:state.size,mode,noise:mode==='brush'?state.noise:0,seed:mode==='lighten'||mode==='darken'?state.intensity:state.seed,selection:null,bounds:get3DFaceBounds(pos),allowedRegions});
   changed();
 }
 function handle3DMove(pos){
@@ -637,12 +759,14 @@ function handle3DMove(pos){
   $('#pixelInfo').textContent=`X: ${pos.x}   Y: ${pos.y}   RGBA: ${Array.from(p.pixels.slice(i,i+4)).join(', ')}`;
   if(pos.x===state.drag.last.x&&pos.y===state.drag.last.y)return;
   let mode=state.tool==='eraser'?'eraser':state.tool==='brush'?'brush':state.tool==='lighten'?'lighten':state.tool==='darken'?'darken':'pencil';
-  const sameMesh=state.drag.last.part===pos.part&&state.drag.last.overlay===pos.overlay;
+  const sameFace=state.drag.last.part===pos.part&&state.drag.last.overlay===pos.overlay&&state.drag.last.faceIndex===pos.faceIndex;
   const dist=Math.hypot(pos.x-state.drag.last.x,pos.y-state.drag.last.y);
-  if(sameMesh&&dist<=3){
-    drawLine(p.pixels,state.drag.last,pos,{color:state.color,size:state.size,mode,noise:mode==='brush'?state.noise:0,seed:mode==='lighten'||mode==='darken'?state.intensity:state.seed,selection:null});
+  const bounds=get3DFaceBounds(pos);
+  const allowedRegions=get3DLayerRegions(pos.layer||state.layer);
+  if(sameFace&&dist<=3){
+    drawLine(p.pixels,state.drag.last,pos,{color:state.color,size:state.size,mode,noise:mode==='brush'?state.noise:0,seed:mode==='lighten'||mode==='darken'?state.intensity:state.seed,selection:null,bounds,allowedRegions});
   }else{
-    drawLine(p.pixels,pos,pos,{color:state.color,size:state.size,mode,noise:mode==='brush'?state.noise:0,seed:mode==='lighten'||mode==='darken'?state.intensity:state.seed,selection:null});
+    drawLine(p.pixels,pos,pos,{color:state.color,size:state.size,mode,noise:mode==='brush'?state.noise:0,seed:mode==='lighten'||mode==='darken'?state.intensity:state.seed,selection:null,bounds,allowedRegions});
   }
   state.drag.last=pos;
   changed();
@@ -676,6 +800,7 @@ function mount3D(host){
     state.preview3d=mountSkinPreview(host,{
       getPixels:()=>active().pixels,
       model,
+      showGrid:state.grid,
       getLayer:()=>state.layer,
       initialVisibility:getVis3d(),
       onModelChange,
@@ -697,6 +822,7 @@ function mount3D(host){
   state.preview3d=mountSkinPreview(host,{
     getPixels:()=>active().pixels,
     model:state.model,
+    showGrid:state.grid,
     getLayer:()=>state.layer,
     initialVisibility:getVis3d(),
     onModelChange,
@@ -729,6 +855,7 @@ function switchView(view){
   }
   $$('.view-tab').forEach(b=>b.classList.toggle('active',b.id===view));
   canvas.closest('.canvas-frame').classList.toggle('view-hidden',view==='preview3d');
+  $('#canvasStage').classList.toggle('preview3d-active',view==='preview3d');
   let host=$('#threeHost');
   if(view==='preview3d'){
     if(!host){
@@ -747,8 +874,8 @@ function switchView(view){
       host.remove();
     }
   }
-  if(view==='rawView')canvas.classList.add('raw-mode');
-  else canvas.classList.remove('raw-mode');
+  if(state.preview3d)$('#zoomLabel').textContent=`${Math.round(state.preview3d.getZoom())}%`;
+  else updateZoom();
   refresh();
 }
 
@@ -818,8 +945,18 @@ function setupUvOverlay(){
   svg.setAttribute('viewBox','0 0 64 64');
   svg.setAttribute('preserveAspectRatio','none');
   svg.setAttribute('aria-label','Minecraft skin UV regions');
+  frame.append(svg);
+  renderUvOverlayRects(state.model);
+  svg.classList.toggle('uv-hidden',!$('#uvToggle').checked);
+  $('#uvToggle').onchange=()=>svg.classList.toggle('uv-hidden',!$('#uvToggle').checked);
+}
+
+function renderUvOverlayRects(model){
+  const svg=$('#uvOverlay');
+  if(!svg)return;
   const colors={head:'#7bc9ff',hat:'#45a9ed',body:'#ffd166',jacket:'#e5a91e',rightLeg:'#9be564',rightPants:'#6db33c',leftLeg:'#d58aff',leftPants:'#ab62d8',rightArm:'#ff8b8b',rightSleeve:'#e96767',leftArm:'#83f0d3',leftSleeve:'#42c9a8'};
-  for(const [part,faces] of Object.entries(SKIN_UV_REGIONS)){
+  svg.replaceChildren();
+  for(const [part,faces] of Object.entries(skinRegions(model))){
     for(const [x,y,x2,y2] of faces){
       const rect=document.createElementNS(svg.namespaceURI,'rect');
       rect.dataset.uvRegion=part;
@@ -837,19 +974,44 @@ function setupUvOverlay(){
       svg.append(rect);
     }
   }
-  frame.append(svg);
-  $('#uvToggle').onchange=()=>svg.classList.toggle('uv-hidden',!$('#uvToggle').checked);
 }
 
 $('#textureView').onclick=()=>switchView('textureView');
-$('#rawView').onclick=()=>switchView('rawView');
 $('#preview3d').onclick=()=>switchView('preview3d');
 setupUvOverlay();
 setupMannequinEvents();
 
-$('#rawView').addEventListener('click',()=>$('#uvToggleWrap').classList.remove('hidden'));
-$('#textureView').addEventListener('click',()=>$('#uvToggleWrap').classList.add('hidden'));
-$('#preview3d').addEventListener('click',()=>$('#uvToggleWrap').classList.add('hidden'));
+$$('[data-camera-view]').forEach(button=>button.onclick=()=>state.preview3d?.setView(button.dataset.cameraView));
+
+const mannequinHandle=$('#mannequinDragHandle'),mannequin=$('#bodyMannequin'),stage=$('#canvasStage');
+let mannequinDrag=null;
+mannequinHandle.addEventListener('pointerdown',e=>{
+  if(e.button!==0||e.target.closest('button'))return;
+  const rect=mannequin.getBoundingClientRect();
+  mannequin.style.left=`${rect.left-stage.getBoundingClientRect().left}px`;
+  mannequin.style.top=`${rect.top-stage.getBoundingClientRect().top}px`;
+  mannequin.style.right='auto';
+  mannequinDrag={x:e.clientX-rect.left,y:e.clientY-rect.top};
+  mannequinHandle.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+mannequinHandle.addEventListener('pointermove',e=>{
+  if(!mannequinDrag)return;
+  const bounds=stage.getBoundingClientRect(),panel=mannequin.getBoundingClientRect();
+  const left=Math.max(0,Math.min(bounds.width-panel.width,e.clientX-bounds.left-mannequinDrag.x));
+  const top=Math.max(0,Math.min(bounds.height-panel.height,e.clientY-bounds.top-mannequinDrag.y));
+  mannequin.style.left=`${left}px`;mannequin.style.top=`${top}px`;
+});
+mannequinHandle.addEventListener('pointerup',()=>{mannequinDrag=null;});
+mannequinHandle.addEventListener('pointercancel',()=>{mannequinDrag=null;});
+
+$('#settings').onclick=()=>$('#settingsModal').classList.remove('hidden');
+$('#closeSettings').onclick=()=>$('#settingsModal').classList.add('hidden');
+$('#settingsModal').addEventListener('click',e=>{if(e.target===$('#settingsModal'))$('#settingsModal').classList.add('hidden');});
+$('#themeSelect').onchange=e=>{
+  document.documentElement.dataset.theme=e.target.value;
+  schedulePersist();
+};
 
 window.addEventListener('keydown',e=>{
   const tag=e.target.tagName;
@@ -894,10 +1056,14 @@ window.addEventListener('keydown',e=>{
   }
 });
 
-window.addEventListener('beforeunload',e=>{if(state.projects.some(p=>p.dirty)){e.preventDefault();e.returnValue='';}});
+window.addEventListener('pagehide',persistNow);
 
-state.projects.push(project());
-state.active=state.projects[0].id;
+if(!restorePersistedState()){
+  state.projects.push(project('Untitled skin',createDefaultSkin('classic')));
+  state.active=state.projects[0].id;
+}
+setColor(state.color,false);
+renderRecentColors();
 updateZoom();
 refresh();
 selectionUI();

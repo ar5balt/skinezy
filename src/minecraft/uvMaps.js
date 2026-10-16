@@ -43,6 +43,13 @@ export function skinRegions(model='classic') {
   return Object.freeze(regions);
 }
 
+export function skinLayerRegions(model='classic',layer='outer') {
+  const outerParts=new Set(['hat','jacket','rightSleeve','leftSleeve','rightPants','leftPants']);
+  return Object.entries(skinRegions(model))
+    .filter(([part])=>outerParts.has(part)===(layer!=='base'))
+    .flatMap(([,faces])=>faces.map(([x,y,x2,y2])=>({x,y,w:x2-x,h:y2-y})));
+}
+
 export const SKIN_UV_REGIONS = skinRegions('classic');
 
 export function uvBoundsValid(map=SKIN_UV_REGIONS) {

@@ -1,16 +1,23 @@
 import { clonePixels, pixelOffset, samePixel } from './texture.js';
 
-export function paintStamp(pixels, x, y, color, size, mode = 'pencil', noise = 0, seed = 1, selection = null) {
+function insideRegions(x,y,regions){
+  return !regions||regions.some(({x:rx,y:ry,w,h})=>x>=rx&&y>=ry&&x<rx+w&&y<ry+h);
+}
+
+export function paintStamp(pixels, x, y, color, size, mode = 'pencil', noise = 0, seed = 1, bounds = null, allowedRegions = null) {
   const start = -Math.floor((size-1)/2), end = start + size;
   for (let py=y+start; py<y+end; py++) for (let px=x+start; px<x+end; px++) {
-    if (px<0||py<0||px>=64||py>=64 || (selection && (px<selection.x||py<selection.y||px>=selection.x+selection.w||py>=selection.y+selection.h))) continue;
-    const i=pixelOffset(px,py), c=mode==='eraser' ? [pixels[i],pixels[i+1],pixels[i+2],0] : mode==='lighten'||mode==='darken' ? null : color;
+    if (px<0||py<0||px>=64||py>=64) continue;
+    if (bounds&&(px<bounds.x||py<bounds.y||px>=bounds.x+bounds.w||py>=bounds.y+bounds.h)) continue;
+    if(!insideRegions(px,py,allowedRegions))continue;
+    const i=pixelOffset(px,py), c=mode==='eraser' ? [pixels[i],pixels[i+1],pixels[i+2],0] : color;
     if (mode==='lighten'||mode==='darken') {
       if (!pixels[i+3]) continue;
-      const [h,s,v]=rgbToHsv(pixels[i],pixels[i+1],pixels[i+2]);
       const amount=Math.max(0,Math.min(100,seed))/100;
-      const [r,g,b]=hsvToRgb(h,s,mode==='lighten'?v+(1-v)*amount:v*(1-amount));
-      pixels[i]=r;pixels[i+1]=g;pixels[i+2]=b;
+      for(let channel=0;channel<3;channel++){
+        const value=pixels[i+channel];
+        pixels[i+channel]=Math.round(mode==='lighten'?value+(255-value)*amount:value*(1-amount));
+      }
       continue;
     }
     if (mode==='brush'&&noise) {
@@ -25,12 +32,14 @@ export function paintStamp(pixels, x, y, color, size, mode = 'pencil', noise = 0
 export function drawLine(pixels, from, to, options) {
   let x0=from.x, y0=from.y, x1=to.x, y1=to.y;
   const dx=Math.abs(x1-x0), sx=x0<x1?1:-1, dy=-Math.abs(y1-y0), sy=y0<y1?1:-1; let err=dx+dy;
-  while(true) { paintStamp(pixels,x0,y0,options.color,options.size,options.mode,options.noise,options.seed,options.selection); if(x0===x1&&y0===y1) break; const e2=2*err; if(e2>=dy){err+=dy;x0+=sx;} if(e2<=dx){err+=dx;y0+=sy;} }
+  while(true) { paintStamp(pixels,x0,y0,options.color,options.size,options.mode,options.noise,options.seed,options.bounds,options.allowedRegions); if(x0===x1&&y0===y1) break; const e2=2*err; if(e2>=dy){err+=dy;x0+=sx;} if(e2<=dx){err+=dx;y0+=sy;} }
 }
 
-export function floodFill(pixels, x, y, color, tolerance=0, selection=null) {
+export function floodFill(pixels, x, y, color, tolerance=0, _selection=null, bounds={x:0,y:0,w:64,h:64}, allowedRegions=null) {
+  const minX=Math.max(0,bounds.x),minY=Math.max(0,bounds.y),maxX=Math.min(64,bounds.x+bounds.w),maxY=Math.min(64,bounds.y+bounds.h);
+  if(x<minX||y<minY||x>=maxX||y>=maxY||!insideRegions(x,y,allowedRegions))return false;
   const start=pixelOffset(x,y); const target=pixels.slice(start,start+4); if (target.every((v,i)=>v===color[i])) return false;
-  const allowed=(px,py)=>px>=0&&py>=0&&px<64&&py<64&&(!selection||(px>=selection.x&&py>=selection.y&&px<selection.x+selection.w&&py<selection.y+selection.h));
+  const allowed=(px,py)=>px>=minX&&py>=minY&&px<maxX&&py<maxY&&insideRegions(px,py,allowedRegions);
   const visited=new Uint8Array(4096), stack=[[x,y]];
   while(stack.length){const [cx,cy]=stack.pop(); if(!allowed(cx,cy))continue; const pos=cy*64+cx; if(visited[pos])continue; visited[pos]=1; const at=pos*4;
     if(!samePixel(pixels.subarray(at,at+4),target,tolerance))continue; pixels.set(color,at);
@@ -105,4 +114,3 @@ export function blitFragment(target, fragment, w, h, destX, destY, blend = false
     }
   }
 }
-

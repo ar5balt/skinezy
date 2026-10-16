@@ -1,25 +1,58 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { blankTexture, decodePng, encodePng } from '../src/texture.js';
+import { blankTexture, createDefaultSkin, decodePng, encodePng } from '../src/texture.js';
 import { drawLine, floodFill, filterPixels, transformSelection, extractFragment, clearRegion, blitFragment } from '../src/operations.js';
-import { SKIN_UV_REGIONS, uvBoundsValid, limbWidth, skinRegions } from '../src/minecraft/uvMaps.js';
+import { SKIN_UV_REGIONS, uvBoundsValid, limbWidth, skinRegions, skinLayerRegions } from '../src/minecraft/uvMaps.js';
 import { rgbaTopToBottom } from '../src/preview3d/pixelRows.js';
-import { boxWithAtlasUV } from '../src/preview3d/skinPreview.js';
+import { boxWithAtlasUV, selectSkinHit } from '../src/preview3d/skinPreview.js';
 
-test('pencil line writes exact pixel coordinates and leaves the rest transparent',()=>{
+test('pencil line writes exact pixel coordinates and ignores any active selection boundary',()=>{
   const pixels=blankTexture();
-  drawLine(pixels,{x:1,y:3},{x:4,y:3},{color:[12,34,56,255],size:1,mode:'pencil',noise:0,seed:1});
+  drawLine(pixels,{x:1,y:3},{x:4,y:3},{color:[12,34,56,255],size:1,mode:'pencil',noise:0,seed:1,selection:{x:1,y:3,w:1,h:1}});
   for(let x=0;x<64;x++) assert.equal(pixels[(3*64+x)*4+3],x>=1&&x<=4?255:0);
   assert.deepEqual([...pixels.slice((3*64+2)*4,(3*64+2)*4+4)],[12,34,56,255]);
 });
 
-test('flood fill changes a connected component once and respects selection bounds',()=>{
+test('3D brush stamps stay inside the selected UV face bounds',()=>{
+  const pixels=blankTexture(),bounds={x:8,y:8,w:4,h:4};
+  drawLine(pixels,{x:8,y:8},{x:11,y:11},{color:[12,34,56,255],size:5,mode:'pencil',noise:0,seed:1,bounds});
+  for(let y=0;y<64;y++)for(let x=0;x<64;x++){
+    const inside=x>=8&&x<12&&y>=8&&y<12;
+    assert.equal(pixels[(y*64+x)*4+3]!==0,inside);
+  }
+});
+
+test('3D outer-layer painting leaves base-layer atlas pixels unchanged',()=>{
+  const pixels=blankTexture();
+  const base={x:16,y:16,w:8,h:12},outer={x:16,y:32,w:8,h:12},atlas={x:0,y:0,w:64,h:64};
+  const baseBefore=pixels.slice((base.y*64+base.x)*4,((base.y+base.h-1)*64+base.x+base.w)*4);
+  drawLine(pixels,{x:16,y:16},{x:16,y:32},{color:[12,34,56,255],size:1,mode:'pencil',noise:0,seed:1,bounds:atlas,allowedRegions:[outer]});
+  assert.deepEqual(pixels.slice((base.y*64+base.x)*4,((base.y+base.h-1)*64+base.x+base.w)*4),baseBefore);
+  assert.deepEqual([...pixels.slice((32*64+16)*4,(32*64+16)*4+4)],[12,34,56,255]);
+
+  const fillPixels=blankTexture([1,2,3,255]);
+  assert.equal(floodFill(fillPixels,16,16,[9,8,7,255],0,null,atlas,[outer]),false);
+  assert.equal(floodFill(fillPixels,16,32,[9,8,7,255],0,null,atlas,[outer]),true);
+  assert.deepEqual([...fillPixels.slice((16*64+16)*4,(16*64+16)*4+4)],[1,2,3,255]);
+});
+
+test('flood fill ignores the visible selection and fills the complete connected component',()=>{
   const pixels=blankTexture([4,5,6,255]);
   for(let y=0;y<64;y++) pixels.set([9,9,9,255],(y*64+8)*4);
   assert.equal(floodFill(pixels,2,2,[100,0,0,255],0,{x:0,y:0,w:6,h:64}),true);
   assert.deepEqual([...pixels.slice((2*64+2)*4,(2*64+2)*4+4)],[100,0,0,255]);
+  assert.deepEqual([...pixels.slice((2*64+7)*4,(2*64+7)*4+4)],[100,0,0,255]); // beyond the old selection edge
   assert.deepEqual([...pixels.slice((2*64+8)*4,(2*64+8)*4+4)],[9,9,9,255]);
   assert.deepEqual([...pixels.slice((2*64+10)*4,(2*64+10)*4+4)],[4,5,6,255]);
+});
+
+test('flood fill stays inside the selected UV face bounds',()=>{
+  const pixels=blankTexture([12,34,56,255]),bounds={x:8,y:8,w:4,h:4};
+  assert.equal(floodFill(pixels,9,9,[200,100,50,255],0,null,bounds),true);
+  assert.deepEqual([...pixels.slice((9*64+9)*4,(9*64+9)*4+4)],[200,100,50,255]);
+  assert.deepEqual([...pixels.slice((9*64+7)*4,(9*64+7)*4+4)],[12,34,56,255]);
+  assert.deepEqual([...pixels.slice((9*64+12)*4,(9*64+12)*4+4)],[12,34,56,255]);
+  assert.deepEqual([...pixels.slice((7*64+9)*4,(7*64+9)*4+4)],[12,34,56,255]);
 });
 
 test('filters preserve alpha and do not reveal fully transparent RGB pixels',()=>{
@@ -35,15 +68,30 @@ test('brush noise is stable for the same seed and pixel coordinates',()=>{
   assert.deepEqual([...a],[...b]);assert.equal(a[(9*64+7)*4+3],180);
 });
 
-test('lighten and darken change HSV value while preserving hue, saturation and alpha',()=>{
+test('lighten and darken blend toward white and black while preserving alpha',()=>{
   const pixels=blankTexture();pixels.set([200,100,50,128],0);
   drawLine(pixels,{x:0,y:0},{x:0,y:0},{color:[0,0,0,255],size:1,mode:'lighten',seed:20});
-  assert.deepEqual([...pixels.slice(0,4)],[211,106,53,128]);
+  assert.deepEqual([...pixels.slice(0,4)],[211,131,91,128]);
   drawLine(pixels,{x:0,y:0},{x:0,y:0},{color:[0,0,0,255],size:1,mode:'darken',seed:20});
-  assert.deepEqual([...pixels.slice(0,4)],[169,85,42,128]);
+  assert.deepEqual([...pixels.slice(0,4)],[169,105,73,128]);
   pixels.set([12,34,56,0],4);
   drawLine(pixels,{x:1,y:0},{x:1,y:0},{color:[0,0,0,255],size:1,mode:'lighten',seed:30});
   assert.deepEqual([...pixels.slice(4,8)],[12,34,56,0]);
+});
+
+test('lighten and darken reach pure white and black at maximum intensity',()=>{
+  const pixels=blankTexture();pixels.set([27,94,183,255],0);pixels.set([27,94,183,255],4);
+  drawLine(pixels,{x:0,y:0},{x:0,y:0},{color:[0,0,0,255],size:1,mode:'lighten',seed:100});
+  drawLine(pixels,{x:1,y:0},{x:1,y:0},{color:[0,0,0,255],size:1,mode:'darken',seed:100});
+  assert.deepEqual([...pixels.slice(0,4)],[255,255,255,255]);
+  assert.deepEqual([...pixels.slice(4,8)],[0,0,0,255]);
+});
+
+test('new classic and slim skins contain visible starter textures',()=>{
+  const classic=createDefaultSkin('classic'),slim=createDefaultSkin('slim');
+  assert.ok(classic.some((value,index)=>index%4===3&&value===255));
+  assert.ok(slim.some((value,index)=>index%4===3&&value===255));
+  assert.notDeepEqual(classic,slim);
 });
 
 test('parameterized filters preserve alpha and selection bounds',()=>{
@@ -117,6 +165,35 @@ test('3D atlas upload reverses row order while preserving each RGBA pixel',()=>{
   assert.deepEqual([...upload.slice(0,4)],[9,8,7,6]);
 });
 
+test('3D hit testing targets the active layer and prefers outer layer when both are enabled',()=>{
+  const UV=skinRegions('classic');
+  const hit=(part,overlay,faceIndex=8)=>({
+    uv:{x:10.5/64,y:1-10.5/64},
+    face:{materialIndex:4},
+    faceIndex,
+    object:{userData:{label:part,overlay,uvKey:overlay?'jacket':'body'}}
+  });
+  const selected=selectSkinHit([hit('torso',false),hit('jacket',true)],UV,'both');
+  assert.equal(selected.part,'jacket');
+  assert.equal(selected.overlay,true);
+  assert.deepEqual(selected.bounds,UV.jacket[4]);
+
+  const baseOnly=selectSkinHit([hit('jacket',true),hit('torso',false)],UV,'base');
+  assert.equal(baseOnly.part,'torso');
+  assert.equal(baseOnly.overlay,false);
+
+  for(let face=0;face<6;face++){
+    const faceHit=selectSkinHit([hit('torso',false,face*2)],UV,'base');
+    assert.equal(faceHit.faceIndex,face);
+    assert.deepEqual(faceHit.bounds,UV.body[face]);
+  }
+});
+
+test('both-layer 3D editing is restricted to outer-layer UV regions',()=>{
+  assert.deepEqual(skinLayerRegions('classic','both'),skinLayerRegions('classic','outer'));
+  assert.notDeepEqual(skinLayerRegions('classic','both'),skinLayerRegions('classic','base'));
+});
+
 test('extractFragment cuts and blitFragment moves fragment to new coordinates without distorting',()=>{
   const pixels=blankTexture();
   // Draw a 3x3 block at (10, 10)
@@ -153,5 +230,3 @@ test('blitFragment with blend=true does not overwrite background pixels with tra
   // (0,1) should still be green
   assert.deepEqual([...target.slice(64*4,64*4+4)],[0,255,0,255]);
 });
-
-
