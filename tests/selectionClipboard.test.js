@@ -47,6 +47,20 @@ test('paste restores exact RGBA pixels at the requested target coordinate', () =
   assert.deepEqual([...target.slice(pixelOffset(19, 21), pixelOffset(19, 21) + 4)], [80, 90, 100, 255]);
 });
 
+test('a copied selection can be pasted into a different skin project', () => {
+  const items = new Map();
+  const storage = { setItem: (key, value) => items.set(key, value), getItem: key => items.get(key) ?? null };
+  const sourceSkin = blankTexture();
+  sourceSkin.set([45, 90, 135, 255], pixelOffset(12, 14));
+  const fragment = captureSelection(sourceSkin, { x: 12, y: 14, w: 1, h: 1 });
+  assert.equal(writeSharedClipboard(fragment, storage), true);
+
+  const destinationSkin = blankTexture();
+  const selection = pasteFragment(destinationSkin, readSharedClipboard(storage), { x: 30, y: 31 });
+  assert.deepEqual(selection, { x: 30, y: 31, w: 1, h: 1 });
+  assert.deepEqual([...destinationSkin.slice(pixelOffset(30, 31), pixelOffset(30, 31) + 4)], [45, 90, 135, 255]);
+});
+
 test('pasting a selection against the bottom-right edge is clipped to the texture', () => {
   const fragment = { version: 1, width: 2, height: 2, x: 63, y: 63, pixels: new Uint8Array(16).fill(255) };
   const target = blankTexture();

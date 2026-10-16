@@ -69,20 +69,22 @@ function validateFragment(fragment) {
   }
 }
 
-export function writeSharedClipboard(fragment, storage = globalThis.localStorage) {
+export function writeSharedClipboard(fragment, storage) {
   try {
-    if (!storage) return false;
-    storage.setItem(SELECTION_CLIPBOARD_KEY, serialiseClipboard(fragment));
+    const target = storage ?? globalThis.localStorage;
+    if (!target) return false;
+    target.setItem(SELECTION_CLIPBOARD_KEY, serialiseClipboard(fragment));
     return true;
   } catch {
     return false;
   }
 }
 
-export function readSharedClipboard(storage = globalThis.localStorage) {
+export function readSharedClipboard(storage) {
   try {
-    if (!storage) return null;
-    const raw = storage.getItem(SELECTION_CLIPBOARD_KEY);
+    const target = storage ?? globalThis.localStorage;
+    if (!target) return null;
+    const raw = target.getItem(SELECTION_CLIPBOARD_KEY);
     return raw ? parseClipboardPayload(raw) : null;
   } catch {
     return null;

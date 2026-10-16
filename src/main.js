@@ -2,6 +2,7 @@ import { blankTexture, clonePixels, createDefaultSkin, decodePng, encodePng, pix
 import { drawLine, floodFill, filterPixels, transformSelection, extractFragment, clearRegion, blitFragment, rgbToHsv, hsvToRgb } from './operations.js';
 import { mountSkinPreview } from './preview3d/skinPreview.js';
 import { skinRegions, skinLayerRegions } from './minecraft/uvMaps.js';
+import { captureSelection, readSharedClipboard, writeSharedClipboard, pasteFragment } from './selectionClipboard.js';
 
 const canvas=document.querySelector('#skinCanvas'), ctx=canvas.getContext('2d',{alpha:true});
 const state={
@@ -172,6 +173,7 @@ function updateTabs(){
         state.model=p.model;
         state.selection=null;
         state.preview=null;
+        selectionUI();
         renderUvOverlayRects(state.model);
         $$('.model-button').forEach(b=>b.classList.toggle('active',b.dataset.model===state.model));
         if(modelChanged&&state.preview3d){
@@ -449,6 +451,7 @@ function applyChosenModel(chosenModel){
     setModel(chosenModel);
     state.selection=null;
     state.preview=null;
+    selectionUI();
     refresh();
     notify(`Created new skin with ${chosenModel==='slim'?'Slim (Alex)':'Classic (Steve)'} model.`);
   }else if(action.type==='open'){
@@ -459,6 +462,7 @@ function applyChosenModel(chosenModel){
     setModel(chosenModel);
     state.selection=null;
     state.preview=null;
+    selectionUI();
     refresh();
     notify(`Opened ${action.name} with ${chosenModel==='slim'?'Slim (Alex)':'Classic (Steve)'} model.`);
   }
@@ -488,11 +492,10 @@ function copy(cut=false){
   if(state.floating)commitFloating();
   const p=active(),s=state.selection;
   if(!s){notify('Select a texture area first.');return;}
-  const pixels=new Uint8Array(s.w*s.h*4);
-  for(let y=0;y<s.h;y++)pixels.set(p.pixels.subarray(pixelOffset(s.x,s.y+y),pixelOffset(s.x+s.w,s.y+y)),y*s.w*4);
-  state.clipboard={width:s.w,height:s.h,pixels};
+  state.clipboard=captureSelection(p.pixels,s);
+  const shared=writeSharedClipboard(state.clipboard);
   if(cut)clearSelection();
-  else notify('Selection copied.');
+  notify(shared?'Selection copied.':'Selection copied for this session; browser storage is unavailable for sharing it across tabs.');
 }
 
 function clearSelection(){
@@ -511,12 +514,16 @@ function clearSelection(){
 }
 
 function paste(){
-  if(!state.clipboard){notify('Clipboard is empty.');return;}
   if(state.floating)commitFloating();
-  const pos=state.selection?{x:state.selection.x,y:state.selection.y}:{x:0,y:0},c=state.clipboard,p=active();
+  const clipboard=readSharedClipboard();
+  if(clipboard)state.clipboard=clipboard;
+  if(!state.clipboard){notify('Clipboard is empty.');return;}
+  const pos=state.selection?{x:state.selection.x,y:state.selection.y}:null,c=state.clipboard,p=active();
+  const next=clonePixels(p.pixels);
+  const selection=pasteFragment(next,c,pos);
   snapshot();
-  for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++)if(pos.x+x<64&&pos.y+y<64)p.pixels.set(c.pixels.subarray((y*c.width+x)*4,(y*c.width+x)*4+4),pixelOffset(pos.x+x,pos.y+y));
-  state.selection={x:pos.x,y:pos.y,w:Math.min(c.width,64-pos.x),h:Math.min(c.height,64-pos.y)};
+  p.pixels=next;
+  state.selection=selection;
   selectionUI();
   changed();
 }
@@ -568,6 +575,7 @@ function closeProject(id){
   }
   if(state.active===id)state.active=state.projects[0].id;
   state.selection=null;
+  selectionUI();
   refresh();
 }
 
@@ -681,6 +689,7 @@ $('#deselect')?.addEventListener('click',()=>{
 $('#copySelection')?.addEventListener('click',()=>copy());
 $('#cutSelection')?.addEventListener('click',()=>copy(true));
 $('#deleteSelection')?.addEventListener('click',clearSelection);
+$('#pasteSelection')?.addEventListener('click',paste);
 
 function applySelectionTransform(operation){
   if(!state.selection){notify('Select a texture area first.');return;}

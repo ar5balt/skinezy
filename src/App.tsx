@@ -143,6 +143,19 @@ export default function App() {
           <div className="swatches" id="swatches"><button className="swatch" style={{ '--swatch': '#5d7cff' } as CSSProperties} type="button" aria-label="Blue"/><button className="swatch" style={{ '--swatch': '#f27475' } as CSSProperties} type="button" aria-label="Red"/><button className="swatch" style={{ '--swatch': '#f5bd4f' } as CSSProperties} type="button" aria-label="Yellow"/><button className="swatch" style={{ '--swatch': '#47c99a' } as CSSProperties} type="button" aria-label="Green"/><button className="swatch" style={{ '--swatch': '#a477ee' } as CSSProperties} type="button" aria-label="Purple"/><button className="swatch add-swatch" title="Add current color" type="button">＋</button></div>
           <div id="recentColors" className="recent-colors" aria-label="Recently used colors" />
         </section>
+        <section className="panel-section selection-section">
+          <div className="section-heading"><h2>Selection</h2></div>
+          <div id="selectionInfo" className="selection-meta">No selection</div>
+          <div className="selection-actions">
+            <button id="copySelection" className="secondary-button" type="button" title="Copy selection (Ctrl+C)">Copy</button>
+            <button id="cutSelection" className="secondary-button" type="button" title="Cut selection (Ctrl+X)">Cut</button>
+            <button id="pasteSelection" className="secondary-button" type="button" title="Paste (Ctrl+V)">Paste</button>
+          </div>
+          <div className="selection-actions">
+            <button id="deleteSelection" className="secondary-button" type="button" title="Delete selection">Delete</button>
+            <button id="deselect" className="secondary-button" type="button" title="Clear selection">Deselect</button>
+          </div>
+        </section>
         <section className="panel-section tool-settings"><div className="section-heading"><h2>Tool settings</h2></div>
           <label className="setting-label"><span>Brush size</span><span id="sizeValue">1 px</span></label><input id="brushSize" type="range" min={1} max={16} defaultValue={1} />
           <label className="setting-label"><span>Noise</span><span id="noiseValue">0%</span></label><input id="noise" type="range" min={0} max={80} defaultValue={0} />
@@ -173,17 +186,17 @@ export default function App() {
           </button>
         </div>
       </div>
-      <div id="settingsModal" className="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-        <div className="settings-dialog">
-          <div className="modal-header"><h3 id="settingsTitle">Settings</h3><button id="closeSettings" className="icon-button" type="button" aria-label="Close">✕</button></div>
-          <label className="settings-theme-label" htmlFor="themeSelect">Color theme</label>
-          <select id="themeSelect" className="theme-select">
-            <option value="dark">Dark</option>
-            <option value="midnight">Midnight</option>
-            <option value="light">Light</option>
-            <option value="forest">Forest</option>
-          </select>
-        </div>
+    </div>
+    <div id="settingsModal" className="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div className="settings-dialog">
+        <div className="modal-header"><h3 id="settingsTitle">Settings</h3><button id="closeSettings" className="icon-button" type="button" aria-label="Close">✕</button></div>
+        <label className="settings-theme-label" htmlFor="themeSelect">Color theme</label>
+        <select id="themeSelect" className="theme-select">
+          <option value="dark">Dark</option>
+          <option value="midnight">Midnight</option>
+          <option value="light">Light</option>
+          <option value="forest">Forest</option>
+        </select>
       </div>
     </div>
   </div>;
